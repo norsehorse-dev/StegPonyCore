@@ -44,6 +44,12 @@ pub enum FrameKind {
     Progressive,
 }
 
+/// The EXIF orientation (TIFF values 1 to 8) recorded in a JPEG file, read from its
+/// marker segments without decoding. `None` when there is none or it is unreadable.
+pub fn exif_orientation(bytes: &[u8]) -> Option<u16> {
+    metadata::file_orientation(bytes)
+}
+
 /// One color component and its quantized coefficients.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Component {

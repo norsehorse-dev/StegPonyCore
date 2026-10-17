@@ -26,6 +26,43 @@ pub struct Raster {
 }
 
 impl Raster {
+    /// The raster as a viewer shows it for a TIFF/EXIF orientation value: 2 mirror,
+    /// 3 rotate 180, 4 flip, 5 transpose, 6 rotate 90 clockwise, 7 transverse, 8 rotate
+    /// 270 clockwise. Values outside 2 to 8 return the raster unchanged.
+    pub fn oriented(self, orientation: u16) -> Raster {
+        if !(2..=8).contains(&orientation) {
+            return self;
+        }
+        let (w, h) = (self.width as usize, self.height as usize);
+        let swap = orientation >= 5;
+        let (ow, oh) = if swap { (h, w) } else { (w, h) };
+        let ch = self.channels as usize;
+        let mut data = vec![0u8; self.data.len()];
+        data.par_chunks_mut(ow * ch)
+            .enumerate()
+            .for_each(|(oy, row)| {
+                for ox in 0..ow {
+                    let (x, y) = match orientation {
+                        2 => (w - 1 - ox, oy),
+                        3 => (w - 1 - ox, h - 1 - oy),
+                        4 => (ox, h - 1 - oy),
+                        5 => (oy, ox),
+                        6 => (oy, h - 1 - ox),
+                        7 => (w - 1 - oy, h - 1 - ox),
+                        _ => (w - 1 - oy, ox),
+                    };
+                    let src = (y * w + x) * ch;
+                    row[ox * ch..ox * ch + ch].copy_from_slice(&self.data[src..src + ch]);
+                }
+            });
+        Raster {
+            width: ow as u32,
+            height: oh as u32,
+            channels: self.channels,
+            data,
+        }
+    }
+
     fn has_alpha(&self) -> bool {
         self.channels == 2 || self.channels == 4
     }
@@ -127,8 +164,18 @@ pub fn decode_png(bytes: &[u8]) -> Result<Raster> {
     Ok(r)
 }
 
-/// Decodes a JPEG cover to 8-bit pixels.
+/// Decodes a JPEG cover to 8-bit pixels, upright: the EXIF orientation is applied to
+/// the pixels, because the PNG output carries no metadata to say which way is up.
 pub fn decode_jpeg(bytes: &[u8]) -> Result<Raster> {
+    let raster = decode_jpeg_stored(bytes)?;
+    Ok(match crate::jpeg::exif_orientation(bytes) {
+        Some(o @ 2..=8) => raster.oriented(o),
+        _ => raster,
+    })
+}
+
+/// Decodes a JPEG to 8-bit pixels in stored order, ignoring EXIF orientation.
+fn decode_jpeg_stored(bytes: &[u8]) -> Result<Raster> {
     let mut dec = zune_jpeg::JpegDecoder::new(bytes);
     let data = dec
         .decode()
@@ -389,6 +436,46 @@ pub fn capacity(cover: &[u8]) -> Result<Capacity> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Expected outputs from Pillow's `ImageOps.exif_transpose` on the 3x2 raster
+    /// 1 2 3 / 4 5 6, as (width, height, samples).
+    #[test]
+    fn orientation_matches_pillow() {
+        let expect: [(u32, u32, [u8; 6]); 8] = [
+            (3, 2, [1, 2, 3, 4, 5, 6]),
+            (3, 2, [3, 2, 1, 6, 5, 4]),
+            (3, 2, [6, 5, 4, 3, 2, 1]),
+            (3, 2, [4, 5, 6, 1, 2, 3]),
+            (2, 3, [1, 4, 2, 5, 3, 6]),
+            (2, 3, [4, 1, 5, 2, 6, 3]),
+            (2, 3, [6, 3, 5, 2, 4, 1]),
+            (2, 3, [3, 6, 2, 5, 1, 4]),
+        ];
+        for (o, (w, h, data)) in (1..=8).zip(expect) {
+            let r = Raster {
+                width: 3,
+                height: 2,
+                channels: 1,
+                data: vec![1, 2, 3, 4, 5, 6],
+            }
+            .oriented(o);
+            assert_eq!(
+                (r.width, r.height, r.data.as_slice()),
+                (w, h, &data[..]),
+                "{o}"
+            );
+            // Multi-channel pixels move as a unit.
+            let rgb = Raster {
+                width: 3,
+                height: 2,
+                channels: 3,
+                data: (1..=6).flat_map(|v| [v, v + 10, v + 20]).collect(),
+            }
+            .oriented(o);
+            let want: Vec<u8> = data.iter().flat_map(|&v| [v, v + 10, v + 20]).collect();
+            assert_eq!(rgb.data, want, "{o} rgb");
+        }
+    }
 
     #[test]
     fn sym_indexing() {

@@ -100,6 +100,34 @@ pub(super) fn exif_orientation(tiff: &[u8]) -> Option<u16> {
     None
 }
 
+/// The EXIF orientation of a JPEG file, from the first EXIF APP1 before the first
+/// scan, without decoding anything. `None` when absent or unreadable.
+pub(super) fn file_orientation(bytes: &[u8]) -> Option<u16> {
+    if !bytes.starts_with(&[0xff, 0xd8]) {
+        return None;
+    }
+    let mut i = 2usize;
+    loop {
+        // Fill bytes (extra 0xFF) may precede a marker code.
+        while bytes.get(i)? == &0xff && bytes.get(i + 1)? == &0xff {
+            i += 1;
+        }
+        if bytes.get(i)? != &0xff {
+            return None;
+        }
+        let code = *bytes.get(i + 1)?;
+        if code == 0xda || code == 0xd9 {
+            return None;
+        }
+        let len = u16::from_be_bytes([*bytes.get(i + 2)?, *bytes.get(i + 3)?]) as usize;
+        let data = bytes.get(i + 4..(i + 2).checked_add(len)?)?;
+        if code == 0xe1 && data.starts_with(EXIF_ID) {
+            return exif_orientation(&data[EXIF_ID.len()..]);
+        }
+        i = i.checked_add(2 + len)?;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,6 +162,21 @@ mod tests {
         }
         assert_eq!(exif_orientation(b"MM\0\x2a\xff\xff\xff\xff"), None);
         assert_eq!(exif_orientation(b"XX\0\x2a\0\0\0\x08"), None);
+    }
+
+    #[test]
+    fn file_orientation_walks_markers() {
+        let mut f = vec![0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xe1];
+        let exif = orientation_block(6);
+        f.extend_from_slice(&((exif.len() + 2) as u16).to_be_bytes());
+        f.extend_from_slice(&exif);
+        f.extend_from_slice(&[0xff, 0xda, 0, 2]);
+        assert_eq!(file_orientation(&f), Some(6));
+        for cut in 0..f.len() {
+            let _ = file_orientation(&f[..cut]);
+        }
+        assert_eq!(file_orientation(&[0xff, 0xd8, 0xff, 0xda, 0, 2]), None);
+        assert_eq!(file_orientation(b"not a jpeg"), None);
     }
 
     #[test]

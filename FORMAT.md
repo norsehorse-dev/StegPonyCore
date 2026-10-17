@@ -135,7 +135,7 @@ Writers choose stego parities with the Viterbi algorithm to minimize total cost;
 
 ## 5. Lossless carrier (PNG)
 
-Input: PNG, 8-bit gray, gray+alpha, RGB or RGBA. Palette, 16-bit, sub-byte and animated PNGs are refused. A JPEG cover is decoded to 8-bit pixels and written out as PNG.
+Input: PNG, 8-bit gray, gray+alpha, RGB or RGBA. Palette, 16-bit, sub-byte and animated PNGs are refused. A JPEG cover is decoded to 8-bit pixels, turned upright by its EXIF orientation (the PNG carries no metadata to do it), and written out as PNG.
 
 - Elements are the color samples (not alpha) of pixels whose alpha is 255 (every pixel, without alpha), numbered `t = pixel_index · color_channels + channel`, pixels in row-major order.
 - Slot of a pixel at `(x, y)`: `((x >> 3) + (y >> 3)) & 1`.

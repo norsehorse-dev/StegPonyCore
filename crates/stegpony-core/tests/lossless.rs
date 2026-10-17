@@ -248,3 +248,26 @@ fn deterministic_for_a_seed() {
     .unwrap();
     assert_eq!(a.png, b.png);
 }
+
+#[test]
+fn jpeg_cover_is_made_upright() {
+    let jpeg = std::fs::read(format!(
+        "{}/tests/fixtures/jpeg/baseline_420.jpg",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    let (stored, _) = lossless::decode_cover(&jpeg).unwrap();
+    assert_ne!(stored.width, stored.height);
+    // The same file with an EXIF orientation of 6 (rotate 90 clockwise) after SOI.
+    let mut rotated = jpeg.clone();
+    let exif: &[u8] = b"\xff\xe1\x00\x22Exif\0\0MM\0\x2a\0\0\0\x08\0\x01\x01\x12\0\x03\0\0\0\x01\0\x06\0\0\0\0\0\0";
+    rotated.splice(2..2, exif.iter().copied());
+    assert_eq!(stegpony_core::jpeg::exif_orientation(&rotated), Some(6));
+    let (upright, source) = lossless::decode_cover(&rotated).unwrap();
+    assert_eq!(source, SourceFormat::Jpeg);
+    assert_eq!(upright, stored.clone().oriented(6));
+    assert_eq!(
+        (upright.width, upright.height),
+        (stored.height, stored.width)
+    );
+}
