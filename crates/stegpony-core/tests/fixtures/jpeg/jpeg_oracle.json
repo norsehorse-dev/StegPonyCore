@@ -1,0 +1,29 @@
+{
+  "baseline_420.jpg": {
+    "coef_sha256": "1f3b5506b72b7893e7923ac44384dd0f43067035c16b6c86a80217e01a5e19eb"
+  },
+  "baseline_422_optimized.jpg": {
+    "coef_sha256": "ea670db956f1799f72373cb59dba5b47d8943edd1a9edb7f586f6efbe9c01a7d"
+  },
+  "baseline_444_restart.jpg": {
+    "coef_sha256": "0daad9a406a5df3c527c88d60be37b65d9a811076c4f3cbb90faa09b0238348b"
+  },
+  "cmyk.jpg": {
+    "coef_sha256": "e8d4955af319bad8570c8c14411703425b7a0880a8b68d11a832b94dae85425f"
+  },
+  "gray.jpg": {
+    "coef_sha256": "047985252d53d28092d0a35d1b020feba3011dc3e0192b6c5efcb9c1ab87dbbc"
+  },
+  "progressive_mozjpeg.jpg": {
+    "coef_sha256": "c956f27bdb69b14c657677f8183df274588d845b4b79dfc6ec3767859d42dba2"
+  },
+  "progressive_restart.jpg": {
+    "coef_sha256": "7c3a257684d5f8a7dd2b0784fafb62164801dc5a1b9ad461eb026ce2ac6c329e"
+  },
+  "progressive_turbo.jpg": {
+    "coef_sha256": "9c8b8fbd6d1db36d05365a69b7d1175d8c72c6a792bdce9a0dcf1e20038fb7c5"
+  },
+  "sampling_mixed.jpg": {
+    "coef_sha256": "23db120cd94193a63511377c4b70c6f6a8b2e31391bafb186be7c342ae2193e4"
+  }
+}

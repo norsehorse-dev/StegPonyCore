@@ -59,6 +59,30 @@ jobs:
       - name: Check vectors against FORMAT.md
         run: python3 tools/check_vectors.py
 
+  jpeg:
+    name: JPEG codec against libjpeg
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install checker dependencies
+        run: pip install numpy pillow jpeglib
+
+      - name: Build helper
+        run: cargo build --locked --release --example jpeg_tool
+
+      - name: Compare with libjpeg, libjpeg-turbo and mozjpeg
+        run: python3 tools/check_jpeg.py
+
   msrv:
     name: Minimum supported Rust (rust-version in Cargo.toml)
     runs-on: ubuntu-latest

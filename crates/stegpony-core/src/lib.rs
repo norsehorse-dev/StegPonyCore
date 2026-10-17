@@ -2,11 +2,13 @@
 //! there is nothing to find. See FORMAT.md for the byte-level specification.
 //!
 //! Phase A covers the envelope (passphrase and age X25519 public keys), the two-slot
-//! layout with decoy, syndrome-trellis embedding, and Lossless (PNG) mode.
+//! layout with decoy, syndrome-trellis embedding, and Lossless (PNG) mode. Phase B adds
+//! the pure-Rust JPEG coefficient codec in [`jpeg`].
 
 pub mod engine;
 pub mod envelope;
 pub mod error;
+pub mod jpeg;
 pub mod keys;
 pub mod lossless;
 pub mod prp;
