@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["crates/stegpony-core", "crates/stegpony-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+license = "Apache-2.0"
+repository = "https://github.com/norsehorse-dev/StegPonyCore"
+authors = ["NorseHorse <NorseHorse@norsehor.se>"]
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.test]
+opt-level = 2
+
+[profile.release]
+lto = true
+codegen-units = 1

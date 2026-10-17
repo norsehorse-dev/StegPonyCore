@@ -1,0 +1,173 @@
+{
+  "cases": [
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "the drop is behind the third bench"
+          },
+          "keys": [
+            {
+              "passphrase": "tuesday"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "passphrase": "wednesday"
+            }
+          ]
+        }
+      ],
+      "cover": "cover_rgb_128.png",
+      "file": "rgb_passphrase.png"
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "for your eyes"
+          },
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-10CQJUH8Z8EKPC3EUSVDCVLCSX80PG3AACQZJG0PYT47Q6DULRL4QU3R8X4"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-173T02A38CKUSREPTV0Z93Q35VJK5L30RSGYYN5QT6E7LTH73K42QKMU9Z8"
+            }
+          ]
+        },
+        {
+          "expect": {
+            "kind": "text",
+            "text": "for your eyes"
+          },
+          "keys": [
+            {
+              "passphrase": "nope"
+            },
+            {
+              "identity": "AGE-SECRET-KEY-173T02A38CKUSREPTV0Z93Q35VJK5L30RSGYYN5QT6E7LTH73K42QKMU9Z8"
+            },
+            {
+              "identity": "AGE-SECRET-KEY-10CQJUH8Z8EKPC3EUSVDCVLCSX80PG3AACQZJG0PYT47Q6DULRL4QU3R8X4"
+            }
+          ]
+        }
+      ],
+      "cover": "cover_rgb_128.png",
+      "file": "rgb_public_key.png"
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "real: meet at the north gate"
+          },
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-173T02A38CKUSREPTV0Z93Q35VJK5L30RSGYYN5QT6E7LTH73K42QKMU9Z8"
+            }
+          ]
+        },
+        {
+          "expect": {
+            "kind": "text",
+            "text": "grocery list: eggs, rice"
+          },
+          "keys": [
+            {
+              "passphrase": "grocery list"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-10CQJUH8Z8EKPC3EUSVDCVLCSX80PG3AACQZJG0PYT47Q6DULRL4QU3R8X4"
+            },
+            {
+              "passphrase": "other"
+            }
+          ]
+        }
+      ],
+      "cover": "cover_rgb_128.png",
+      "file": "rgb_decoy.png"
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "data_hex": "030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d74",
+            "kind": "file",
+            "mime": "application/octet-stream",
+            "name": "notes.age"
+          },
+          "keys": [
+            {
+              "passphrase": "café"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "passphrase": "cafe"
+            }
+          ]
+        }
+      ],
+      "cover": "cover_gray_160.png",
+      "file": "gray_file_nfc.png"
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "alpha stays put"
+          },
+          "keys": [
+            {
+              "passphrase": "a"
+            }
+          ]
+        }
+      ],
+      "cover": "cover_rgba_128.png",
+      "file": "rgba_passphrase.png"
+    },
+    {
+      "checks": [
+        {
+          "expect": null,
+          "keys": [
+            {
+              "passphrase": "tuesday"
+            },
+            {
+              "identity": "AGE-SECRET-KEY-10CQJUH8Z8EKPC3EUSVDCVLCSX80PG3AACQZJG0PYT47Q6DULRL4QU3R8X4"
+            }
+          ]
+        }
+      ],
+      "cover": "cover_rgb_128.png",
+      "file": "cover_rgb_128.png"
+    }
+  ],
+  "description": "StegPony format v1 Lossless reveal vectors. FORMAT.md sections 4 and 5. Each check reveals the file with the listed keys; expect null means nothing is found. Covers are the unmodified images the stego files were made from.",
+  "format_version": 1
+}

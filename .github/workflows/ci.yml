@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux and macOS (arm64) both run the full suite: the format has to come
+        # out bit-exact on every platform the apps build for.
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --locked --workspace --all-targets
+
+      - name: Test
+        # Fixtures under crates/stegpony-core/tests/fixtures are committed and are
+        # what the tests use. tools/make_fixtures.py is not re-run here because its
+        # output depends on the Pillow and NumPy versions installed.
+        run: cargo test --locked --workspace
+
+  vectors:
+    name: Independent check of the format vectors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install checker dependencies
+        run: pip install argon2-cffi cryptography pillow
+
+      - name: Check vectors against FORMAT.md
+        run: python3 tools/check_vectors.py
+
+  msrv:
+    name: Minimum supported Rust (rust-version in Cargo.toml)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust 1.88
+        uses: dtolnay/rust-toolchain@1.88
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --locked --workspace

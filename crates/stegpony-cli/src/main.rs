@@ -1,0 +1,285 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{bail, Context, Result};
+use clap::{Args, Parser, Subcommand};
+use rand_core::OsRng;
+use stegpony_core::lossless::{self, SourceFormat};
+use stegpony_core::{Detectability, HideKey, Identity, Payload, Recipient, RevealKey};
+use zeroize::Zeroizing;
+
+/// Hide encrypted messages and files in images.
+#[derive(Parser)]
+#[command(name = "stegpony", version, about)]
+struct Cli {
+    #[command(subcommand)]
+    cmd: Cmd,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    /// Hide a message or file in a cover image (output is PNG).
+    Hide(HideArgs),
+    /// Look for a hidden message or file.
+    Reveal(RevealArgs),
+    /// Show how much a cover can hold.
+    Capacity {
+        /// Cover image (PNG or JPEG).
+        cover: PathBuf,
+    },
+    /// Generate an identity (age X25519 key pair).
+    Keygen {
+        /// Write the identity to this file instead of standard output.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
+
+#[derive(Args)]
+struct HideArgs {
+    /// Cover image (PNG or JPEG).
+    #[arg(short, long)]
+    cover: PathBuf,
+    /// Output PNG.
+    #[arg(short, long)]
+    output: PathBuf,
+    #[command(flatten)]
+    payload: PayloadArgs,
+    /// Hide for this recipient (age1...) instead of a passphrase.
+    #[arg(short, long)]
+    recipient: Option<String>,
+    /// Decoy text, revealed by the decoy secret.
+    #[arg(long, conflicts_with = "decoy_file")]
+    decoy_message: Option<String>,
+    /// Decoy file, revealed by the decoy secret.
+    #[arg(long)]
+    decoy_file: Option<PathBuf>,
+    /// Hide the decoy for this recipient instead of a decoy passphrase.
+    #[arg(long)]
+    decoy_recipient: Option<String>,
+}
+
+#[derive(Args)]
+#[group(required = true, multiple = false)]
+struct PayloadArgs {
+    /// Text to hide.
+    #[arg(short, long)]
+    message: Option<String>,
+    /// File to hide.
+    #[arg(short, long)]
+    file: Option<PathBuf>,
+}
+
+#[derive(Args)]
+struct RevealArgs {
+    /// Image to look in.
+    image: PathBuf,
+    /// age identity file(s) to try.
+    #[arg(short, long)]
+    identity: Vec<PathBuf>,
+    /// Also ask for a passphrase (the default when no identity is given).
+    #[arg(short, long)]
+    passphrase: bool,
+    /// Directory to write a revealed file into.
+    #[arg(short, long, default_value = ".")]
+    out_dir: PathBuf,
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+    match cli.cmd {
+        Cmd::Hide(a) => hide(a),
+        Cmd::Reveal(a) => reveal(a),
+        Cmd::Capacity { cover } => capacity(&cover),
+        Cmd::Keygen { output } => keygen(output),
+    }
+}
+
+/// Passphrases come from an environment variable when set (for scripts and tests),
+/// otherwise from a prompt with confirmation.
+fn passphrase(env: &str, prompt: &str, confirm: bool) -> Result<Zeroizing<String>> {
+    if let Ok(v) = std::env::var(env) {
+        let v = Zeroizing::new(v);
+        if v.is_empty() {
+            bail!("{env} is set but empty");
+        }
+        return Ok(v);
+    }
+    let p = Zeroizing::new(rpassword::prompt_password(format!("{prompt}: "))?);
+    if p.is_empty() {
+        bail!("empty passphrase");
+    }
+    if confirm {
+        let again = Zeroizing::new(rpassword::prompt_password(format!("{prompt} (again): "))?);
+        if *again != *p {
+            bail!("passphrases did not match");
+        }
+    }
+    Ok(p)
+}
+
+fn load_payload(message: Option<String>, file: Option<PathBuf>) -> Result<Payload> {
+    if let Some(m) = message {
+        return Ok(Payload::Text(m));
+    }
+    let path = file.context("nothing to hide")?;
+    let data = fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Ok(Payload::File {
+        name,
+        mime: "application/octet-stream".into(),
+        data,
+    })
+}
+
+fn hide(a: HideArgs) -> Result<()> {
+    let has_decoy = a.decoy_message.is_some() || a.decoy_file.is_some();
+    if a.decoy_recipient.is_some() && !has_decoy {
+        bail!("--decoy-recipient needs --decoy-message or --decoy-file");
+    }
+    let cover = fs::read(&a.cover).with_context(|| format!("reading {}", a.cover.display()))?;
+    let payload = load_payload(a.payload.message, a.payload.file)?;
+    let key = match a.recipient {
+        Some(r) => HideKey::Recipient(Recipient::parse(&r)?),
+        None => HideKey::Passphrase(passphrase("STEGPONY_PASSPHRASE", "Passphrase", true)?),
+    };
+    let decoy = if has_decoy {
+        let p = load_payload(a.decoy_message, a.decoy_file)?;
+        let k = match a.decoy_recipient {
+            Some(r) => HideKey::Recipient(Recipient::parse(&r)?),
+            None => HideKey::Passphrase(passphrase(
+                "STEGPONY_DECOY_PASSPHRASE",
+                "Decoy passphrase",
+                true,
+            )?),
+        };
+        Some((p, k))
+    } else {
+        None
+    };
+
+    let out = lossless::hide(
+        &cover,
+        (&payload, &key),
+        decoy.as_ref().map(|(p, k)| (p, k)),
+        &mut OsRng,
+    )?;
+    fs::write(&a.output, &out.png).with_context(|| format!("writing {}", a.output.display()))?;
+    if out.source == SourceFormat::Jpeg {
+        eprintln!(
+            "note: the cover was a JPEG; the output is a PNG, which is unusual for a camera photo"
+        );
+    }
+    let d = match out.detectability {
+        Detectability::Low => "low",
+        Detectability::Medium => "medium",
+        Detectability::High => "high (use a larger cover or a smaller payload)",
+    };
+    eprintln!("wrote {} (detectability: {d})", a.output.display());
+    Ok(())
+}
+
+fn reveal(a: RevealArgs) -> Result<()> {
+    let image = fs::read(&a.image).with_context(|| format!("reading {}", a.image.display()))?;
+    let mut keys = Vec::new();
+    for path in &a.identity {
+        let s = Zeroizing::new(
+            fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?,
+        );
+        for id in Identity::parse_file(&s)? {
+            keys.push(RevealKey::Identity(id));
+        }
+    }
+    if a.passphrase || keys.is_empty() {
+        keys.push(RevealKey::Passphrase(passphrase(
+            "STEGPONY_PASSPHRASE",
+            "Passphrase",
+            false,
+        )?));
+    }
+    match lossless::reveal(&image, &keys)? {
+        None => {
+            eprintln!("nothing found");
+            std::process::exit(1);
+        }
+        Some(Payload::Text(t)) => {
+            println!("{t}");
+        }
+        Some(Payload::File { name, data, .. }) => {
+            let path = safe_output_path(&a.out_dir, &name)?;
+            fs::write(&path, data).with_context(|| format!("writing {}", path.display()))?;
+            eprintln!("wrote {}", path.display());
+        }
+    }
+    Ok(())
+}
+
+/// Keeps a revealed file name from escaping the output directory or clobbering a file.
+fn safe_output_path(dir: &Path, name: &str) -> Result<PathBuf> {
+    let base = Path::new(name)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|n| !n.is_empty() && n != "." && n != "..")
+        .unwrap_or_else(|| "revealed.bin".into());
+    let mut path = dir.join(&base);
+    let mut i = 1;
+    while path.exists() {
+        path = dir.join(format!("{i}-{base}"));
+        i += 1;
+    }
+    Ok(path)
+}
+
+fn capacity(cover: &Path) -> Result<()> {
+    let bytes = fs::read(cover).with_context(|| format!("reading {}", cover.display()))?;
+    let c = lossless::capacity(&bytes)?;
+    println!("elements per slot: {} / {}", c.elements[0], c.elements[1]);
+    match c.max_bucket {
+        Some(_) => println!("largest message: {} bytes of text", c.max_text_bytes),
+        None => println!("too small to hold anything"),
+    }
+    Ok(())
+}
+
+fn keygen(output: Option<PathBuf>) -> Result<()> {
+    let id = Identity::generate(&mut OsRng);
+    let text = Zeroizing::new(format!(
+        "# public key: {}\n{}\n",
+        id.recipient(),
+        id.to_age_string()
+    ));
+    match output {
+        Some(path) => {
+            write_private(&path, text.as_bytes())?;
+            eprintln!("Public key: {}", id.recipient());
+        }
+        None => print!("{}", *text),
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn write_private(path: &Path, data: &[u8]) -> Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+        .with_context(|| format!("creating {}", path.display()))?;
+    f.write_all(data)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn write_private(path: &Path, data: &[u8]) -> Result<()> {
+    if path.exists() {
+        bail!("{} already exists", path.display());
+    }
+    fs::write(path, data)?;
+    Ok(())
+}

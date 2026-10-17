@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+*.profraw
+.DS_Store
+__pycache__/
+*.pyc
+drafts/
+_archive/
+_to_delete/
