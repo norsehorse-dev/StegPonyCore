@@ -1,6 +1,6 @@
 # StegPony format, version 1
 
-This is the byte-level specification for what StegPony writes into a carrier. Any implementation that follows it must produce output that the reference implementation in `crates/stegpony-core` reveals, and the other way round. Status: draft, Phase A (envelope, slot layout, Lossless mode). JPEG, Survive-messenger and text carriers get their own sections as they land.
+This is the byte-level specification for what StegPony writes into a carrier. Any implementation that follows it must produce output that the reference implementation in `crates/stegpony-core` reveals, and the other way round. Status: draft (envelope, slot layout, Lossless and native JPEG carriers). Survive-messenger and text carriers get their own sections as they land.
 
 Design rule: every bit written into a carrier is indistinguishable from random without the secret. There is no magic number, no version field, no length in the clear and no KDF parameters in the clear. Format versions are found by trial, newest first.
 
@@ -144,14 +144,29 @@ Input: PNG, 8-bit gray, gray+alpha, RGB or RGBA. Palette, 16-bit, sub-byte and a
 
 Writers in the reference implementation use HILL costs (high-pass residual with the KB kernel, 3x3 mean of its magnitude, reciprocal with epsilon 0.01, 15x15 mean, symmetric borders), computed per channel on the unmodified cover. Costs are a writer choice and not part of the format.
 
-## 6. Test vectors
+## 6. Native JPEG carrier
+
+Input: the 8-bit Huffman JPEG variants the coefficient codec supports: baseline, extended sequential and progressive, with one to four components. The cover is never decoded to pixels and re-encoded: quantization tables, dimensions, sampling and scan structure are kept. Recompression, cropping and resizing destroy the payload.
+
+- Every AC coefficient in every component is an element, **including zero and ±1**. DC coefficients and MCU padding blocks are excluded. Eligibility never depends on a coefficient's value, so changes through zero do not change positions or capacity.
+- Components are concatenated in frame-header order. Within each component, content blocks are row-major over `width_blocks * height_blocks`, excluding MCU padding. Within each block, natural row-major frequency indices `1..64` give the 63 AC elements (not zigzag order). The element number is the component's offset plus `63 * (by * width_blocks + bx) + (k - 1)`.
+- The slot is `(bx + by) & 1` in that component's own block coordinates. Sampling factors do not rescale this checkerboard. Every AC element of a block shares its slot.
+- Parity is `coefficient & 1`, also for negative coefficients (equivalently the absolute value modulo two). A flip changes the signed value by one: at or above 1023 it decrements, at or below -1023 it increments, otherwise a fair coin chooses +1 or -1. Existing values outside that range stay eligible and move toward zero.
+- Output is JPEG. Missing Huffman symbols trigger the codec's table rebuild. Metadata handling is a writer choice and does not affect element enumeration.
+
+The reference writer strips metadata by default with ScrubPony's default policy, and keeps everything only when asked: JFIF is kept with any embedded thumbnail removed, ICC profile chunks and Adobe APP14 are kept so colors are interpreted as before, and EXIF is replaced by ScrubPony's orientation-only block (one IFD0 entry, no thumbnail) when the orientation is 2 to 8, or dropped when the image is upright. Every other APPn (XMP, MPF, JFXX, maker blocks, Photoshop/IPTC), comments and data after EOI are removed.
+
+The reference writer uses J-UNIWARD costs. It reconstructs each component's unrounded, unclipped dequantized spatial plane only to measure texture, correlates it with the three Daubechies-8 high-frequency filter pairs (LH, HL, HH) under symmetric borders, and sums the absolute wavelet impact of a unit change in the coefficient, scaled by its quantization step, divided by `abs(residual) + 2^-6`. The residual alignment is the corrected one (Butora et al., arXiv 2305.19776); costs agree with conseal's `JUNIWARD_FIX_OFF_BY_ONE` to float precision. Planes use complete content blocks, including edge-block samples. Costs are computed before any embedding and are a writer choice, not a format rule; floating-point costs need not be bit-exact across platforms, while extraction and coefficient I/O are integer operations. Detectability ratings stay provisional until the Phase B steganalysis baseline.
+
+## 7. Test vectors
 
 Everything here is fixed for format v1. A change to any of it is a format change.
 
 - `crates/stegpony-core/src/vectors.rs` pins the permutation: the first four outputs with an all-zero key over `T = 1,000,000` are `354941, 379842, 364614, 325392`.
 - `crates/stegpony-core/tests/vectors/envelope_vectors.json`: six envelopes (passphrase text, empty text, an NFC pair, a file in a larger bucket, public-key text, public-key file). Each gives the inputs, every random byte the writer drew (`random_hex`; for public-key cases the last 33 are `eph || tweak`, and one case needed four attempts), and every derived value: locate key, both slots' PRP keys, Argon2id output or shared secret, HKDF output, padded plaintext, head and body. A writer fed the same random bytes must produce the same head and body.
+- `crates/stegpony-core/tests/vectors/jpeg_vectors/`: baseline RGB, progressive RGB, gray and CMYK native JPEG reader vectors, including a decoy and a public-key file. `index.json` lists the keys and expected payloads. The independent checker reads their coefficients through libjpeg (`jpeglib`), rather than the Rust codec.
 - `crates/stegpony-core/tests/vectors/png_vectors/`: Lossless stego images (RGB, gray, RGBA) with their unmodified covers and `index.json`, which lists keys to try on each image and the payload each must reveal, or `null` for nothing. A reader must reveal exactly that. The images are reveal inputs, not writer outputs: a writer with different costs makes different images that are equally valid.
 
 The age keys in the vectors are test keys and are published on purpose.
 
-`tools/check_vectors.py` checks all of it independently of the Rust code: it rebuilds every passphrase envelope, checks public-key envelopes from both the sender's and the reader's side (the reader's through the Elligator 2 map), and reveals every PNG vector from scratch. It needs `argon2-cffi`, `cryptography` and `Pillow`.
+`tools/check_vectors.py` checks all of it independently of the Rust code: it rebuilds every passphrase envelope, checks public-key envelopes from both the sender's and the reader's side (the reader's through the Elligator 2 map), and reveals every PNG and JPEG vector from scratch. It needs `argon2-cffi`, `cryptography`, `Pillow`, `numpy` and `jpeglib`.

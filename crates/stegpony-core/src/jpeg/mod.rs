@@ -13,7 +13,10 @@
 //! progressive Huffman (SOF2), 1 to 4 components, any sampling factors, restart
 //! intervals. Refused: arithmetic coding, lossless, hierarchical, 12-bit, DNL.
 
+pub mod carrier;
+mod costs;
 mod huffman;
+mod metadata;
 mod scan;
 
 use huffman::{BitReader, BitWriter, DecTable, EncTable, HuffSpec};
@@ -411,6 +414,45 @@ impl Jpeg {
             _ => true,
         });
         self.trailing.clear();
+    }
+
+    /// Privacy scrub with ScrubPony's default policy (see [`metadata`]): keeps JFIF
+    /// without its thumbnail, ICC profile chunks and Adobe APP14, reduces EXIF to an
+    /// orientation-only block (or nothing when the image is upright), and drops every
+    /// other APPn, comments and anything after EOI.
+    pub fn strip_private_metadata(&mut self) {
+        let mut orientation_done = false;
+        let segments = std::mem::take(&mut self.segments);
+        for s in segments {
+            match s {
+                Segment::Marker { code, data } if matches!(code, 0xE0..=0xEF | 0xFE) => {
+                    match metadata::action(code, &data, &mut orientation_done) {
+                        metadata::Action::Keep => {
+                            self.segments.push(Segment::Marker { code, data })
+                        }
+                        metadata::Action::Replace(data) => {
+                            self.segments.push(Segment::Marker { code, data })
+                        }
+                        metadata::Action::Drop => {}
+                    }
+                }
+                other => self.segments.push(other),
+            }
+        }
+        self.trailing.clear();
+    }
+
+    /// APPn and COM segments as (marker code, payload), in order, for inspection and tests.
+    pub fn marker_segments(&self) -> Vec<(u8, &[u8])> {
+        self.segments
+            .iter()
+            .filter_map(|s| match s {
+                Segment::Marker { code, data } if matches!(code, 0xE0..=0xEF | 0xFE) => {
+                    Some((*code, data.as_slice()))
+                }
+                _ => None,
+            })
+            .collect()
     }
 
     /// Marker codes of the kept segments, in order, for inspection and tests.

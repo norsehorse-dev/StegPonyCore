@@ -1,0 +1,150 @@
+{
+  "cases": [
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "JPEG vector 0: café 🐴"
+          },
+          "keys": [
+            {
+              "passphrase": "JPEG vector passphrase"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "passphrase": "wrong JPEG key"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-1N34N7KL9LPXYK3DMTP5FNMR3M9KWUDFHC7YNGEGWDAW76ZA7P0RQ46DXXH"
+            }
+          ]
+        },
+        {
+          "expect": {
+            "kind": "text",
+            "text": "a harmless decoy"
+          },
+          "keys": [
+            {
+              "passphrase": "JPEG decoy"
+            }
+          ]
+        }
+      ],
+      "cover": "cover_baseline_420.jpg",
+      "file": "stego_baseline_420.jpg"
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "data_hex": "00ff0102",
+            "kind": "file",
+            "mime": "application/octet-stream",
+            "name": "note.bin"
+          },
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-15VQ8DPK6DNV75QXHKMLF5LMPKZYXV5DPJ32VGA6ZZ3QPYXNCNVRSSC84ED"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "passphrase": "wrong JPEG key"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-1SWDTPMZT3JFDQRHHN9XXHEDQUQEE4WT4HPSQ6XHTGJE8A76KV46SVYR22Q"
+            }
+          ]
+        }
+      ],
+      "cover": "cover_progressive_turbo.jpg",
+      "file": "stego_progressive_turbo.jpg"
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "JPEG vector 2: café 🐴"
+          },
+          "keys": [
+            {
+              "passphrase": "JPEG vector passphrase"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "passphrase": "wrong JPEG key"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-1HZ9LCMDYNVPPM2YDMEKQLLCH7DALW75YF7EDTLW2FD5SPVRMZM6S68P2VX"
+            }
+          ]
+        }
+      ],
+      "cover": "cover_gray_large.jpg",
+      "file": "stego_gray_large.jpg"
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "JPEG vector 3: café 🐴"
+          },
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-1WQZWZMU2SE5JAP8KFQSDZ9ZJMMZQLL2ZNG9HY2KHLZX75T2Q06NQ675TU8"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "passphrase": "wrong JPEG key"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-134R3A65WYRRKX2ET9M66Z77AXHWXC7JDL28ZPVVZ8NDNEP382QHSRCCENG"
+            }
+          ]
+        }
+      ],
+      "cover": "cover_cmyk.jpg",
+      "file": "stego_cmyk.jpg"
+    }
+  ],
+  "format": 1
+}

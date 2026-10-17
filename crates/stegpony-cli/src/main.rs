@@ -2,8 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use rand_core::OsRng;
+use stegpony_core::jpeg::carrier as jpeg;
 use stegpony_core::lossless::{self, SourceFormat};
 use stegpony_core::{Detectability, HideKey, Identity, Payload, Recipient, RevealKey};
 use zeroize::Zeroizing;
@@ -18,7 +19,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Hide a message or file in a cover image (output is PNG).
+    /// Hide a message or file in a cover image.
     Hide(HideArgs),
     /// Look for a hidden message or file.
     Reveal(RevealArgs),
@@ -26,6 +27,9 @@ enum Cmd {
     Capacity {
         /// Cover image (PNG or JPEG).
         cover: PathBuf,
+        /// Carrier mode.
+        #[arg(long, value_enum, default_value = "lossless")]
+        mode: ImageMode,
     },
     /// Generate an identity (age X25519 key pair).
     Keygen {
@@ -35,14 +39,26 @@ enum Cmd {
     },
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum ImageMode {
+    Lossless,
+    Jpeg,
+}
+
 #[derive(Args)]
 struct HideArgs {
     /// Cover image (PNG or JPEG).
     #[arg(short, long)]
     cover: PathBuf,
-    /// Output PNG.
+    /// Output image (PNG in lossless mode, JPEG in jpeg mode).
     #[arg(short, long)]
     output: PathBuf,
+    /// Carrier mode.
+    #[arg(long, value_enum, default_value = "lossless")]
+    mode: ImageMode,
+    /// Keep JPEG metadata, including location information.
+    #[arg(long)]
+    keep_metadata: bool,
     #[command(flatten)]
     payload: PayloadArgs,
     /// Hide for this recipient (age1...) instead of a passphrase.
@@ -90,7 +106,7 @@ fn main() -> Result<()> {
     match cli.cmd {
         Cmd::Hide(a) => hide(a),
         Cmd::Reveal(a) => reveal(a),
-        Cmd::Capacity { cover } => capacity(&cover),
+        Cmd::Capacity { cover, mode } => capacity(&cover, mode),
         Cmd::Keygen { output } => keygen(output),
     }
 }
@@ -161,24 +177,43 @@ fn hide(a: HideArgs) -> Result<()> {
         None
     };
 
-    let out = lossless::hide(
-        &cover,
-        (&payload, &key),
-        decoy.as_ref().map(|(p, k)| (p, k)),
-        &mut OsRng,
-    )?;
-    fs::write(&a.output, &out.png).with_context(|| format!("writing {}", a.output.display()))?;
-    if out.source == SourceFormat::Jpeg {
-        eprintln!(
-            "note: the cover was a JPEG; the output is a PNG, which is unusual for a camera photo"
-        );
-    }
-    let d = match out.detectability {
+    let (bytes, detectability) = match a.mode {
+        ImageMode::Lossless => {
+            if a.keep_metadata {
+                bail!("--keep-metadata requires --mode jpeg");
+            }
+            let out = lossless::hide(
+                &cover,
+                (&payload, &key),
+                decoy.as_ref().map(|(p, k)| (p, k)),
+                &mut OsRng,
+            )?;
+            if out.source == SourceFormat::Jpeg {
+                eprintln!("note: the cover was a JPEG; the output is a PNG, which is unusual for a camera photo");
+            }
+            (out.png, out.detectability)
+        }
+        ImageMode::Jpeg => {
+            let out = jpeg::hide(
+                &cover,
+                (&payload, &key),
+                decoy.as_ref().map(|(p, k)| (p, k)),
+                a.keep_metadata,
+                &mut OsRng,
+            )?;
+            (out.jpeg, out.detectability)
+        }
+    };
+    fs::write(&a.output, bytes).with_context(|| format!("writing {}", a.output.display()))?;
+    let d = match detectability {
         Detectability::Low => "low",
         Detectability::Medium => "medium",
         Detectability::High => "high (use a larger cover or a smaller payload)",
     };
-    eprintln!("wrote {} (detectability: {d})", a.output.display());
+    eprintln!(
+        "wrote {} (provisional detectability: {d})",
+        a.output.display()
+    );
     Ok(())
 }
 
@@ -200,7 +235,12 @@ fn reveal(a: RevealArgs) -> Result<()> {
             false,
         )?));
     }
-    match lossless::reveal(&image, &keys)? {
+    let found = if image.starts_with(&[0xff, 0xd8, 0xff]) {
+        jpeg::reveal(&image, &keys)?
+    } else {
+        lossless::reveal(&image, &keys)?
+    };
+    match found {
         None => {
             eprintln!("nothing found");
             std::process::exit(1);
@@ -233,9 +273,12 @@ fn safe_output_path(dir: &Path, name: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn capacity(cover: &Path) -> Result<()> {
+fn capacity(cover: &Path, mode: ImageMode) -> Result<()> {
     let bytes = fs::read(cover).with_context(|| format!("reading {}", cover.display()))?;
-    let c = lossless::capacity(&bytes)?;
+    let c = match mode {
+        ImageMode::Lossless => lossless::capacity(&bytes)?,
+        ImageMode::Jpeg => jpeg::capacity(&bytes)?,
+    };
     println!("elements per slot: {} / {}", c.elements[0], c.elements[1]);
     match c.max_bucket {
         Some(_) => println!("largest message: {} bytes of text", c.max_text_bytes),

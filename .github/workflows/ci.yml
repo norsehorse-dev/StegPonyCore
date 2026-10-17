@@ -54,7 +54,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install checker dependencies
-        run: pip install argon2-cffi cryptography pillow
+        run: pip install argon2-cffi cryptography pillow numpy jpeglib
 
       - name: Check vectors against FORMAT.md
         run: python3 tools/check_vectors.py

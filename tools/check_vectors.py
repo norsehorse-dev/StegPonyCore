@@ -4,7 +4,7 @@ Written from FORMAT.md, not from the Rust code, so that the vectors test the
 specification and not only the reference implementation's agreement with itself.
 
 Run from the repo root:  python3 tools/check_vectors.py
-Needs: argon2-cffi, cryptography, Pillow.
+Needs: argon2-cffi, cryptography, Pillow, NumPy, jpeglib.
 
 What it checks:
   envelope_vectors.json  every passphrase envelope is rebuilt from its random bytes
@@ -343,6 +343,36 @@ class LosslessImage:
         return self._positions[cache]
 
 
+class JpegImage(LosslessImage):
+    """FORMAT.md 6, read through libjpeg, independently of Rust coefficient I/O."""
+    def __init__(self, path):
+        import jpeglib
+        import numpy as np
+        image = jpeglib.read_dct(path)
+        self.data, self.slots, self.counts, self.dc = [], [], [0, 0], []
+        for name in ("Y", "Cb", "Cr", "K"):
+            plane = getattr(image, name, None)
+            if plane is None or not np.asarray(plane).size:
+                continue
+            plane = np.asarray(plane)
+            rows, cols = plane.shape[:2]
+            for by in range(rows):
+                for bx in range(cols):
+                    slot = (bx + by) & 1
+                    self.dc.append(int(plane[by, bx].reshape(64)[0]))
+                    self.data.extend(int(v) for v in plane[by, bx].reshape(64)[1:])
+                    self.slots.extend([slot] * 63)
+                    self.counts[slot] += 63
+        self.t = len(self.data)
+        self._positions = {}
+
+    def slot_of(self, t):
+        return self.slots[t]
+
+    def parity(self, t):
+        return self.data[t] & 1
+
+
 def reveal(img, keys):
     locs = []
     for key in keys:
@@ -415,6 +445,22 @@ def main():
             what = [("passphrase " + repr(k["passphrase"])) if "passphrase" in k else "identity" for k in chk["keys"]]
             report(f"{case['file']} with {', '.join(what)} -> {'nothing' if chk['expect'] is None else chk['expect']['kind']}",
                    got == chk["expect"])
+
+    jpeg_dir = os.path.join(root, "jpeg_vectors")
+    with open(os.path.join(jpeg_dir, "index.json"), encoding="utf-8") as f:
+        jpeg_index = json.load(f)
+    for case in jpeg_index["cases"]:
+        img = JpegImage(os.path.join(jpeg_dir, case["file"]))
+        cover = JpegImage(os.path.join(jpeg_dir, case["cover"]))
+        report(f"{case['file']}: unchanged enumeration and DC, ±1 AC changes",
+               img.slots == cover.slots and img.dc == cover.dc
+               and all(abs(a-b) <= 1 for a,b in zip(img.data, cover.data)))
+        # libjpeg must also decode the complete stego JPEG to pixels.
+        import jpeglib
+        jpeglib.read_spatial(os.path.join(jpeg_dir, case["file"])).spatial
+        for chk in case["checks"]:
+            report(f"{case['file']}: independent reveal -> {chk['expect']}",
+                   reveal(img, chk["keys"]) == chk["expect"])
 
     print(f"\n{passes} passed, {len(failures)} failed")
     sys.exit(1 if failures else 0)
