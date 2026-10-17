@@ -15,9 +15,9 @@ Native JPEG (Phase B):
 
 - **JPEG coefficient codec.** A pure-Rust reader and writer for a JPEG's quantized DCT coefficients (`stegpony_core::jpeg`): baseline, extended sequential and progressive Huffman files, any sampling factors, restart intervals. No pixels and no IDCT, so a cover's own compression is kept; an unchanged file writes back byte for byte, and new Huffman tables are built only when changed coefficients need symbols the old ones lack. Checked against libjpeg, libjpeg-turbo and mozjpeg.
 
-- **JPEG carrier.** All AC coefficients in every component, including zeros, with J-UNIWARD costs and the same two-slot engine. Native JPEG output, passphrase and public-key payloads, decoys, and metadata stripped by default. Detectability thresholds still need the Phase B steganalysis baseline.
+- **JPEG carrier.** All AC coefficients in every component, including zeros, with J-UNIWARD costs and the same two-slot engine. Native JPEG output, passphrase and public-key payloads, decoys, and metadata stripped by default. Its Low / Medium / High rating comes from a steganalysis baseline on real phone photos; see [tools/steganalysis](tools/steganalysis/README.md).
 
-Coming next: steganalysis calibration (rest of Phase B), the Android app (Phase C), text modes (Phase D), and a mode that survives messenger recompression (Phase E).
+Coming next: the Android app (Phase C), text modes (Phase D), and a mode that survives messenger recompression (Phase E).
 
 ## Command line
 

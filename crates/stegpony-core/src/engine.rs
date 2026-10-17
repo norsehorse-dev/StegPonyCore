@@ -100,8 +100,9 @@ pub struct Capacity {
     pub elements: [usize; 2],
 }
 
-/// How noticeable the change rate is likely to be. Provisional thresholds; Phase B sets
-/// them from steganalysis runs.
+/// How noticeable the changes are likely to be. Native JPEG rates with thresholds
+/// calibrated by steganalysis (`jpeg::carrier::rating`); [`detectability`] below is
+/// still provisional and serves Lossless mode until PNG covers get their own baseline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Detectability {
     Low,
@@ -127,6 +128,7 @@ pub fn capacity<C: Cover>(cover: &C) -> Capacity {
     }
 }
 
+/// Provisional rate-based rating (bucket bits per body element), used by Lossless mode.
 pub fn detectability<C: Cover>(cover: &C, bucket: usize) -> Detectability {
     let n = slot_len(cover, 0).min(slot_len(cover, 1));
     let body = layout(n, Mode::PublicKey).map_or(1, |l| l.body.max(1));

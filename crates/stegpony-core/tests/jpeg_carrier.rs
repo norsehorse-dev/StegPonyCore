@@ -313,3 +313,29 @@ fn scrub_follows_scrubpony_policy() {
     assert!(parsed.trailing.is_empty());
     assert_eq!(carrier::reveal(&out.jpeg, &[rp("k")]).unwrap(), Some(p));
 }
+
+#[test]
+fn rating_counts_both_slots_per_nonzero_ac() {
+    use stegpony_core::Detectability::{High, Low, Medium};
+    // gray.jpg has 13x10 blocks, so 8190 AC elements. With every AC coefficient
+    // nonzero, bucket 0 (64 bytes per slot, 1024 bits for both) is 0.125 bpnzac,
+    // bucket 2 (128 bytes) 0.25 and bucket 4 (256 bytes) 0.5.
+    let mut busy = Jpeg::parse(&fixture("gray.jpg")).unwrap();
+    for (i, v) in busy.components[0].coefs.iter_mut().enumerate() {
+        if i % 64 != 0 {
+            *v = 3;
+        }
+    }
+    let busy = JpegCover::new(busy);
+    assert_eq!(busy.domain(), 8190);
+    assert_eq!(carrier::rating(&busy, 0), Low);
+    assert_eq!(carrier::rating(&busy, 2), Medium);
+    assert_eq!(carrier::rating(&busy, 4), High);
+    let mut flat = Jpeg::parse(&fixture("gray.jpg")).unwrap();
+    for (i, v) in flat.components[0].coefs.iter_mut().enumerate() {
+        if i % 64 != 0 {
+            *v = 0;
+        }
+    }
+    assert_eq!(carrier::rating(&JpegCover::new(flat), 0), High);
+}

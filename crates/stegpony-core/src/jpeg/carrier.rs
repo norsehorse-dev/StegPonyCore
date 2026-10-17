@@ -2,7 +2,7 @@
 //! including zeros, participate, so embedding cannot change enumeration.
 use super::{costs, Jpeg};
 use crate::engine::{self, Capacity, Cover, Detectability};
-use crate::envelope::{bucket_for, HideKey, Payload, RevealKey};
+use crate::envelope::{bucket_for, bucket_size, HideKey, Payload, RevealKey};
 use crate::error::Result;
 use rand_core::{CryptoRng, RngCore};
 
@@ -109,8 +109,62 @@ impl Cover for JpegCover {
 
 pub struct Hidden {
     pub jpeg: Vec<u8>,
-    /// Provisional payload-rate rating, pending steganalysis calibration.
+    /// Rating from [`rating`], computed on the cover before embedding.
     pub detectability: Detectability,
+}
+
+/// Upper bounds, in payload bits per nonzero AC coefficient, for the Low and Medium
+/// ratings. Calibrated Oct 2026 with color DCTR and an FLD ensemble on 792 tiles
+/// (512x512) cut from 66 quality-95 phone photos (tools/steganalysis): 0.10 bpnzac
+/// gave P_E 0.445, 0.19 gave 0.398, 0.39 gave 0.232, 0.78 gave 0.031. The bounds sit
+/// below the measured points on purpose, because larger training sets, deep-learning
+/// detectors and full-size photos all detect more than this baseline does.
+pub const LOW_MAX_BPNZAC: f64 = 0.15;
+pub const MEDIUM_MAX_BPNZAC: f64 = 0.30;
+
+/// How detectable a payload of `bucket` would be in this cover: both slots' bits
+/// (the second slot is always filled) per nonzero AC coefficient among the elements
+/// the engine uses.
+pub fn rating(cover: &JpegCover, bucket: usize) -> Detectability {
+    let counts = cover.slot_counts();
+    let total = counts[0] + counts[1];
+    let used: u64 = counts
+        .iter()
+        .map(|&n| n.min(engine::MAX_ELEMENTS_PER_SLOT))
+        .sum();
+    let nonzero: u64 = cover
+        .jpeg
+        .components
+        .iter()
+        .map(|c| {
+            let mut n = 0u64;
+            for by in 0..c.height_blocks {
+                for bx in 0..c.width_blocks {
+                    n += c.block(bx, by)[1..].iter().filter(|&&v| v != 0).count() as u64;
+                }
+            }
+            n
+        })
+        .sum();
+    // Slot positions are a keyed random sample, so the used elements carry the same
+    // share of nonzero coefficients as the whole cover.
+    let nonzero_used = nonzero as f64 * used as f64 / total.max(1) as f64;
+    let bits = (2 * bucket_size(bucket) * 8) as f64;
+    let bpnzac = bits / nonzero_used.max(1.0);
+    if bpnzac <= LOW_MAX_BPNZAC {
+        Detectability::Low
+    } else if bpnzac <= MEDIUM_MAX_BPNZAC {
+        Detectability::Medium
+    } else {
+        Detectability::High
+    }
+}
+
+/// The rating a payload of `framed_len` bytes would get in this cover, for a live
+/// capacity meter before hiding.
+pub fn detectability(bytes: &[u8], framed_len: usize) -> Result<Detectability> {
+    let cover = JpegCover::new(Jpeg::parse(bytes)?);
+    Ok(rating(&cover, bucket_for(framed_len, 0)?))
 }
 
 /// Hides in native coefficients. Privacy metadata is stripped unless explicitly kept.
@@ -126,8 +180,8 @@ pub fn hide<R: RngCore + CryptoRng>(
     if let Some((p, _)) = decoy {
         bucket = bucket_for(p.framed_len(), bucket)?;
     }
+    let detectability = rating(&cover, bucket);
     engine::hide(&mut cover, primary, decoy, rng)?;
-    let detectability = engine::detectability(&cover, bucket);
     let mut jpeg = cover.into_jpeg();
     if !keep_metadata {
         jpeg.strip_private_metadata();

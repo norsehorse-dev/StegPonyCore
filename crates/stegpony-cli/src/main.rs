@@ -210,10 +210,11 @@ fn hide(a: HideArgs) -> Result<()> {
         Detectability::Medium => "medium",
         Detectability::High => "high (use a larger cover or a smaller payload)",
     };
-    eprintln!(
-        "wrote {} (provisional detectability: {d})",
-        a.output.display()
-    );
+    let label = match a.mode {
+        ImageMode::Lossless => "provisional detectability",
+        ImageMode::Jpeg => "detectability",
+    };
+    eprintln!("wrote {} ({label}: {d})", a.output.display());
     Ok(())
 }
 
