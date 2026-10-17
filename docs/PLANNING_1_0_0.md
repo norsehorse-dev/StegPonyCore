@@ -25,6 +25,7 @@ When the repos are created, this file becomes `PLANNING_1_0_0.md` at each repo r
 - Oct 15, 2026: **Distribution.** F-Droid, direct APK, GitHub releases. No IzzyOnDroid.
 - Oct 15, 2026: **RCs one at a time.** Each RC is built and tested before the next one's work starts (section 14).
 - Oct 16, 2026: **Argon2id v1 parameters: m = 128 MiB, t = 3, p = 4** (Q2). Timed with the core's `examples/argon2_bench.rs` on the slowest test phone (moto g play 2026): 0.34 s per derivation, so about 1.0 s of Argon2id for a reveal that misses and 1.4 s for a hide with a passphrase decoy. Twice the memory of the 64 MiB / p = 1 draft for about the same time. 256 MiB (0.63 s) was left out because 2 GB phones at minSdk 26 could kill the allocation. Lanes run on threads through argon2's `parallel` feature; the output is the same with or without it.
+- Oct 16, 2026: **JPEG coefficient I/O in pure Rust** (Q6), inside stegpony-core, replacing the earlier libjpeg-turbo FFI recommendation. Only the entropy layer is needed (Huffman decode and encode of quantized coefficients, no IDCT for the format itself), so it stays small; no C cross-compile for Android, iOS or desktop, the reproducible-build harness is unchanged, and output is bit-exact across platforms by construction. libjpeg stays in the picture as a test oracle (the Python jpeglib package reads and writes DCT coefficients through libjpeg), not as a dependency. The existing dct-io crate (baseline only, first scan only, a single 0.1 release) is a second reader for tests, not a dependency.
 
 ## 1. Summary
 
@@ -137,7 +138,7 @@ One envelope format for every carrier (image or text). Design rule: every byte t
 
 - Embed in the cover's own quantized DCT coefficients. The cover is never decoded to pixels and re-encoded, so quantization tables and the camera's compression stay intact, which is the main reason JPEG stego can be hard to detect.
 - J-UNIWARD style costs with syndrome-trellis codes. F5 and nsF5 are documented as the older baseline, not used.
-- Coefficient access: libjpeg-turbo's coefficient API (`jpeg_read_coefficients` / `jpeg_write_coefficients`) through FFI, vendored and built inside the reproducible-build Docker harness, or a pure-Rust entropy decoder and encoder (lossless coefficient round-trip only needs Huffman decode and encode, no IDCT). Q6.
+- Coefficient access: libjpeg-turbo's coefficient API (`jpeg_read_coefficients` / `jpeg_write_coefficients`) through FFI, vendored and built inside the reproducible-build Docker harness, or a pure-Rust entropy decoder and encoder (lossless coefficient round-trip only needs Huffman decode and encode, no IDCT). Q6. Decided Oct 16, 2026: pure Rust (section 0). Open design point: embedding can create Huffman symbols missing from a file's optimized tables, so the writer keeps the original tables when every symbol fits and rebuilds optimized tables otherwise.
 - Survives delivery as an unchanged file. Does not survive re-quantization, resizing, or messenger "photo" sends.
 - Metadata: EXIF stripped by default (ScrubPony's logic), since a messenger-sent image usually has none. Option to keep. HEIC covers are decoded and re-encoded as JPEG, which loses the native-coefficient advantage, and the UI says so.
 
@@ -330,7 +331,7 @@ Each carries a recommendation that stands as a provisional decision unless overr
 3. **Locate-key strength for public-key mode.** Recommendation: ship as described, with the optional shared passphrase on top and the limit stated in Help.
 4. **Age key reuse.** Recommendation: yes. Same key type, free interop with AgePony, no new key format to teach users.
 5. **Multi-recipient.** Recommendation: not in 1.0. A fixed-size recipient table later, padded so the count does not leak.
-6. **JPEG coefficient I/O.** libjpeg-turbo FFI or pure-Rust entropy coder. Recommendation: libjpeg-turbo through FFI for 1.0 (proven, handles progressive and odd files), built in the Docker harness; revisit pure Rust later if the C dependency causes F-Droid friction.
+6. **JPEG coefficient I/O.** libjpeg-turbo FFI or pure-Rust entropy coder. Recommendation: libjpeg-turbo through FFI for 1.0 (proven, handles progressive and odd files), built in the Docker harness; revisit pure Rust later if the C dependency causes F-Droid friction. Decided Oct 16, 2026: pure Rust in stegpony-core, baseline first, then progressive decode and encode; libjpeg (via Python jpeglib) as the test oracle. Requirements come from sample camera JPEGs from the Android test phones (baseline or progressive, subsampling, restart intervals, table style, Ultra HDR gain maps).
 7. **Dictionary languages.** Recommendation: English list at 1.0; add the family languages one at a time with native review, since a bad word list is a tell.
 8. **Survive-messenger channels.** Recommendation: start with WhatsApp, Signal, Telegram; add Discord and Instagram DM only if the channel lab shows stable behavior.
 9. **Disguise on a future Play flavor.** Recommendation: leave it out of any Play build; F-Droid and direct APK keep it.
