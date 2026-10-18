@@ -30,6 +30,7 @@ When the repos are created, this file becomes `PLANNING_1_0_0.md` at each repo r
 - Oct 17, 2026: **JPEG detectability thresholds from the steganalysis baseline** (section 18). Color DCTR with an FLD ensemble on 792 tiles from 66 quality-95 photos off the phone sampled for Q6, folds split by capture time. Payload counted over both slots per nonzero AC coefficient: 0.10 bpnzac gave P_E 0.445, 0.19 gave 0.398, 0.39 gave 0.232, 0.78 gave 0.031. At 0.39, ideal ternary J-UNIWARD gave 0.354 and nsF5 (PixelKnot's family) 0.055. Ratings: Low up to 0.15, Medium up to 0.30, High above, deliberately below the measured points. Still to measure: other test phones and daylight scenes. Open: StegPony's binary parity embedding makes about 1.5 times the changes of ternary embedding; moving to ternary is a format change, cheapest before 1.0.
 - Oct 18, 2026: **PGP key support moves into 1.0** (from Later), requested by the user who suggested the app. A Curve25519 OpenPGP key's encryption subkey (v4 cv25519 or v6 X25519) is the same X25519 key the envelope already uses, so this is key import only, with no format change. stegpony-core reads public keys for recipients and unlocks secret keys with their passphrase to get the private half, through rpgp (the `pgp` crate, pure Rust, so the reproducible-build harness is unchanged); StegPony's own labelled HKDF keeps the reuse separate from OpenPGP's ECDH. The app imports by file or from PGPony's share sheet. RSA and NIST-curve keys cannot be used (the hidden key exchange is X25519 only); post-quantum composite keys are left out of 1.0, since only their X25519 part would apply. A live link where StegPony asks PGPony to unlock a key stays Later. Adds 2 to 3 evenings to Phase C.
 - Oct 18, 2026: **Reveal with a hardware key in 1.0, shipped in RC2**, requested by the user who suggested the app. The OpenPGP card applet (YubiKey, Nitrokey, Token2) does the Curve25519 key exchange on the card (PSO:DECIPHER returns the shared secret), so reveal sends it the ephemeral key recovered from the Elligator 2 representative and finishes on the phone; no format change. Hiding only needs the public key and never touches the card. The core's reveal takes a key-exchange callback in place of an in-memory secret; the Android side reuses PGPony Android's card layer (NFC and USB, PIN with KDF-DO, Nitrokey 3 USB fix, exclusive NFC during a session). Curve25519 card keys only. A reveal makes two card operations (one per slot), so two touches when touch-to-use is on. Open risk: a card that strictly validates points could refuse the torsion-dirty ephemeral keys; testing on real cards settles it. Test devices: a Token2 PIN+ here (OpenPGP 3.4 with X25519; factory default is RSA 2048, so the encryption key must be cv25519) and the requesting user's own key. RC2 rather than RC1 so RC1 is not delayed and imported PGP keys get tested first. 3 to 4 evenings.
+- Oct 18, 2026: **Hardware-key reveal moves from RC2 into RC1.** The requesting user's key is a Nitrokey 3A NFC (firmware 1.9.1, ed25519/cv25519), and there is no Nitrokey here to test with, so it has to be in the first test build he gets. Test devices for RC1: his Nitrokey 3A NFC (NFC, or USB-A through an adapter) and the Token2 PIN+ here.
 
 ## 1. Summary
 
@@ -205,7 +206,7 @@ Natural-looking text from an on-device language model with arithmetic coding. It
 - Decoy slot.
 - Keys: generate identity, import age identity, contacts by QR or paste, export recipient.
 - PGP keys: import Curve25519 public and secret keys (v4 cv25519, v6 X25519) by file or from PGPony via share, for hiding to contacts and revealing with your own key.
-- Reveal with a hardware key (OpenPGP card applet on YubiKey, Nitrokey, Token2) holding a Curve25519 encryption key, over NFC or USB (RC2).
+- Reveal with a hardware key (OpenPGP card applet on YubiKey, Nitrokey, Token2) holding a Curve25519 encryption key, over NFC or USB (RC1).
 - Channel picker on Hide; channel profiles with last-verified dates.
 - Capacity meter and detectability rating.
 - Cover reuse warning, EXIF strip, in-app camera capture.
@@ -283,15 +284,13 @@ Part-time weekday evenings. Survive-messenger is research-grade, so its estimate
 
 **Phase B: JPEG native.** Coefficient I/O (Q6), J-UNIWARD style costs, STC in the DCT domain, EXIF strip, steganalysis baseline (section 18) that sets the detectability thresholds. 7 to 9 evenings. Cowork handoff.
 
-**Phase C: Android app.** Hide and Reveal flows, share target, Keys with age import and QR, Curve25519 PGP key import (file and PGPony share), decoy UI, capacity meter and rating, cover-reuse warning, in-app camera, app lock, FLAG_SECURE, clipboard clear, launcher disguise, Settings family sections. 10 to 13 evenings (PGP key import added Oct 18).
+**Phase C: Android app.** Hide and Reveal flows, share target, Keys with age import and QR, Curve25519 PGP key import (file and PGPony share), decoy UI, capacity meter and rating, cover-reuse warning, in-app camera, app lock, FLAG_SECURE, clipboard clear, launcher disguise, Settings family sections. Hardware-key reveal: core key-exchange callback, card layer ported from PGPony Android, Reveal flow with PIN and tap or USB, tested on the requesting user's Nitrokey 3A NFC and a Token2 PIN+. 13 to 17 evenings (PGP key import and hardware-key reveal added Oct 18).
 
-**RC1 = A + B + C.** Images (Lossless and JPEG), both key modes with age and Curve25519 PGP keys, decoy, disguise. Goes to the requesting user first, then the Android RC pool. RC2 work does not start until RC1 is built and tested.
+**RC1 = A + B + C.** Images (Lossless and JPEG), both key modes with age and Curve25519 PGP keys, reveal with a hardware key, decoy, disguise. Goes to the requesting user first, then the Android RC pool. RC2 work does not start until RC1 is built and tested.
 
 **Phase D: text modes.** Dictionary codec and English list, zero-width codec, per-platform survival testing, text flows in the app. 4 to 5 evenings.
 
-**Hardware-key reveal (RC2).** Core key-exchange callback, card layer ported from PGPony Android, Reveal flow with PIN and tap, tests on a Token2 PIN+ and the requesting user's key. 3 to 4 evenings.
-
-**RC2 = RC1 + D + hardware-key reveal.**
+**RC2 = RC1 + D.**
 
 **Phase E: Survive-messenger.** Literature pass, channel lab (send calibration images through each platform, record what comes back), profiles, robust embedding, ECC sizing, simulate-and-verify before send, the experimental label and per-channel dates. 8 to 12 evenings.
 
@@ -327,7 +326,7 @@ Family set at 1.0: en, de, es, fr, zh-Hans, pt-BR, ru. Plan it as multi-agent fr
 - **Steganalysis:** run Aletheia (open-source steganalysis toolkit) and a rich-model classifier against StegPony output at several payloads, on a cover set shot on the test phones. Compare with PixelKnot (F5) and plain LSB as baselines. The results set the rating thresholds in 7.4 and go into Help as plain numbers.
 - **Robustness:** for Survive-messenger, automated channel simulation in CI, and a manual channel-lab pass through every real platform before each RC, recorded with dates.
 - **Text:** zero-width survival per platform, dictionary round-trip through copy and paste, autocorrect, and line wrapping.
-- **Android:** no Bitmap ever reaches the core (a test asserts the core input is file bytes), share-out bytes equal core output, disguise switching on several launchers, FLAG_SECURE, hardware-key reveal on a Token2 PIN+ over USB and on the requesting user's key (including whether each card accepts torsion-dirty ephemeral points), no INTERNET permission in the merged manifest.
+- **Android:** no Bitmap ever reaches the core (a test asserts the core input is file bytes), share-out bytes equal core output, disguise switching on several launchers, FLAG_SECURE, hardware-key reveal on the requesting user's Nitrokey 3A NFC and on a Token2 PIN+ over USB (including whether each card accepts torsion-dirty ephemeral points), no INTERNET permission in the merged manifest.
 - **Testers:** the requesting user gets RC1 first, then the Android RC pool. Same RC pattern as the rest of the family.
 
 ## 19. iOS and desktop
