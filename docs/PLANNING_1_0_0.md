@@ -28,6 +28,7 @@ When the repos are created, this file becomes `PLANNING_1_0_0.md` at each repo r
 - Oct 16, 2026: **JPEG coefficient I/O in pure Rust** (Q6), inside stegpony-core, replacing the earlier libjpeg-turbo FFI recommendation. Only the entropy layer is needed (Huffman decode and encode of quantized coefficients, no IDCT for the format itself), so it stays small; no C cross-compile for Android, iOS or desktop, the reproducible-build harness is unchanged, and output is bit-exact across platforms by construction. libjpeg stays in the picture as a test oracle (the Python jpeglib package reads and writes DCT coefficients through libjpeg), not as a dependency. The existing dct-io crate (baseline only, first scan only, a single 0.1 release) is a second reader for tests, not a dependency.
 - Oct 16, 2026: **Native JPEG carrier: all AC coefficients in every component**, including zeros and ±1; DC and MCU padding are excluded. The ordering, slots and signed ±1 rules are in FORMAT.md section 6. Carrier, J-UNIWARD costs (checked against conseal's reference implementation), CLI mode and independent libjpeg reader vectors are implemented. Output metadata follows ScrubPony's default policy (ICC kept, EXIF reduced to orientation). Phase B steganalysis and detectability calibration remain outstanding.
 - Oct 17, 2026: **JPEG detectability thresholds from the steganalysis baseline** (section 18). Color DCTR with an FLD ensemble on 792 tiles from 66 quality-95 photos off the phone sampled for Q6, folds split by capture time. Payload counted over both slots per nonzero AC coefficient: 0.10 bpnzac gave P_E 0.445, 0.19 gave 0.398, 0.39 gave 0.232, 0.78 gave 0.031. At 0.39, ideal ternary J-UNIWARD gave 0.354 and nsF5 (PixelKnot's family) 0.055. Ratings: Low up to 0.15, Medium up to 0.30, High above, deliberately below the measured points. Still to measure: other test phones and daylight scenes. Open: StegPony's binary parity embedding makes about 1.5 times the changes of ternary embedding; moving to ternary is a format change, cheapest before 1.0.
+- Oct 18, 2026: **PGP key support moves into 1.0** (from Later), requested by the user who suggested the app. A Curve25519 OpenPGP key's encryption subkey (v4 cv25519 or v6 X25519) is the same X25519 key the envelope already uses, so this is key import only, with no format change. stegpony-core reads public keys for recipients and unlocks secret keys with their passphrase to get the private half, through rpgp (the `pgp` crate, pure Rust, so the reproducible-build harness is unchanged); StegPony's own labelled HKDF keeps the reuse separate from OpenPGP's ECDH. The app imports by file or from PGPony's share sheet. RSA and NIST-curve keys cannot be used (the hidden key exchange is X25519 only); post-quantum composite keys are left out of 1.0, since only their X25519 part would apply. A live link where StegPony asks PGPony to unlock a key stays Later. Adds 2 to 3 evenings to Phase C.
 
 ## 1. Summary
 
@@ -86,7 +87,7 @@ Four destinations:
 
 - **Hide.** Pick a cover (camera, photo picker, file) or a text cover, pick a payload (type a message, or pick a file), pick a key (passphrase or a contact's public key), optionally add a decoy, pick "How will you send this?" (Original file / Messenger: WhatsApp, Signal, Telegram... / Text). The capacity meter updates live. Output goes to Save, Share, or Copy.
 - **Reveal.** Open an image or paste text, enter a passphrase or let the app try your identities. Shows the message or offers the file for save/share/open-with. Share-target entry point: share an image into StegPony and it lands here.
-- **Keys.** Your identity (X25519, age-compatible), contacts' public keys (scan QR, paste `age1...`, import from AgePony via share). Export your recipient as text or QR.
+- **Keys.** Your identity (X25519, age-compatible), contacts' public keys (scan QR, paste `age1...`, import from AgePony via share, import a Curve25519 PGP public key by file or from PGPony via share). Your identity can also be a Curve25519 PGP secret key, imported and unlocked with its passphrase. Export your recipient as text or QR.
 - **Settings.** Launcher disguise, app lock, clipboard auto-clear, default output format, channel profiles with "last verified" dates, Help (what is detectable and what is not), More from NorseHorse, licenses.
 
 ## 6. Crypto envelope
@@ -202,6 +203,7 @@ Natural-looking text from an on-device language model with arithmetic coding. It
 - Passphrase and public-key (age X25519) modes; optional passphrase on top of public key.
 - Decoy slot.
 - Keys: generate identity, import age identity, contacts by QR or paste, export recipient.
+- PGP keys: import Curve25519 public and secret keys (v4 cv25519, v6 X25519) by file or from PGPony via share, for hiding to contacts and revealing with your own key.
 - Channel picker on Hide; channel profiles with last-verified dates.
 - Capacity meter and detectability rating.
 - Cover reuse warning, EXIF strip, in-app camera capture.
@@ -214,7 +216,8 @@ Later:
 - iOS app (section 19).
 - Desktop app and a CLI from the same core.
 - Multi-recipient public-key slots.
-- PGP key support (Curve25519 PGP keys map onto X25519).
+- Live key access through PGPony (StegPony asks PGPony to unlock a key instead of importing it).
+- Post-quantum composite PGP keys.
 - More dictionary languages.
 - Batch hide (one payload split across several images with erasure coding, so any k of n recover it).
 - Audio covers (WAV, FLAC).
@@ -260,7 +263,7 @@ The help text is written for people whose safety may depend on it: plain, specif
 
 ## 13. Architecture and stack
 
-- **stegpony-core (Rust).** Envelope (Argon2id, X25519, Elligator 2, HKDF, ChaCha20-Poly1305 from RustCrypto and dalek crates), keyed permutation, slot layout, cost functions, syndrome-trellis coder, PNG I/O (`png` crate), JPEG coefficient I/O (Q6), robust-mode pipeline and channel profiles, ECC, dictionary and zero-width codecs, age key parsing. No platform code. Fully built and tested in the cloud session.
+- **stegpony-core (Rust).** Envelope (Argon2id, X25519, Elligator 2, HKDF, ChaCha20-Poly1305 from RustCrypto and dalek crates), keyed permutation, slot layout, cost functions, syndrome-trellis coder, PNG I/O (`png` crate), JPEG coefficient I/O (Q6), robust-mode pipeline and channel profiles, ECC, dictionary and zero-width codecs, age key parsing, OpenPGP Curve25519 key import (rpgp). No platform code. Fully built and tested in the cloud session.
 - **CLI.** `stegpony` binary in the core repo: hide, reveal, capacity, simulate-channel. Used for fixtures, steganalysis runs, and as the eventual desktop CLI.
 - **Android.** `:app` (Compose, Material 3) and the core through the binding in 10.3. Kotlin layer is source-only from Cowork; NorseHorse builds with gradlew on the Mac.
 - **Format contract.** `FORMAT.md` in the core repo: envelope, slot layout, permutation, bucket table, Argon2id parameters per version, dictionary list hashes. Test vectors (`envelope_vectors.json`, `png_vectors/`, `jpeg_vectors/`, `text_vectors.json`) are release-gating on every platform.
@@ -274,9 +277,9 @@ Part-time weekday evenings. Survive-messenger is research-grade, so its estimate
 
 **Phase B: JPEG native.** Coefficient I/O (Q6), J-UNIWARD style costs, STC in the DCT domain, EXIF strip, steganalysis baseline (section 18) that sets the detectability thresholds. 7 to 9 evenings. Cowork handoff.
 
-**Phase C: Android app.** Hide and Reveal flows, share target, Keys with age import and QR, decoy UI, capacity meter and rating, cover-reuse warning, in-app camera, app lock, FLAG_SECURE, clipboard clear, launcher disguise, Settings family sections. 8 to 10 evenings.
+**Phase C: Android app.** Hide and Reveal flows, share target, Keys with age import and QR, Curve25519 PGP key import (file and PGPony share), decoy UI, capacity meter and rating, cover-reuse warning, in-app camera, app lock, FLAG_SECURE, clipboard clear, launcher disguise, Settings family sections. 10 to 13 evenings (PGP key import added Oct 18).
 
-**RC1 = A + B + C.** Images (Lossless and JPEG), both key modes, decoy, disguise. Goes to the requesting user first, then the Android RC pool. RC2 work does not start until RC1 is built and tested.
+**RC1 = A + B + C.** Images (Lossless and JPEG), both key modes with age and Curve25519 PGP keys, decoy, disguise. Goes to the requesting user first, then the Android RC pool. RC2 work does not start until RC1 is built and tested.
 
 **Phase D: text modes.** Dictionary codec and English list, zero-width codec, per-platform survival testing, text flows in the app. 4 to 5 evenings.
 
@@ -288,7 +291,7 @@ Part-time weekday evenings. Survive-messenger is research-grade, so its estimate
 
 **Phase F: release.** String freeze, localization (section 17), F-Droid metadata and store graphics, stegpony.app on the Pony family shell (index, privacy, support, help, rc/), fdroiddata MR. 4 to 5 evenings.
 
-**1.0 = A through F**, roughly 37 to 49 evenings, about ten to twelve weeks of weekday evenings if StegPony got all of them; maintenance on the existing apps stretches that. Contingency only if the schedule breaks: E moves to 1.1 and 1.0 ships after RC2. Never cut the envelope's no-header property or the decoy's always-two-slots rule; a stego app with a tell is worse than none.
+**1.0 = A through F**, roughly 39 to 52 evenings, about ten to thirteen weeks of weekday evenings if StegPony got all of them; maintenance on the existing apps stretches that. Contingency only if the schedule breaks: E moves to 1.1 and 1.0 ships after RC2. Never cut the envelope's no-header property or the decoy's always-two-slots rule; a stego app with a tell is worse than none.
 
 ## 15. Distribution and release engineering
 
@@ -311,7 +314,7 @@ Family set at 1.0: en, de, es, fr, zh-Hans, pt-BR, ru. Plan it as multi-agent fr
 
 ## 18. Testing
 
-- **Core unit tests:** envelope vectors, wrong-key and no-payload images indistinguishable to the extractor, bucket trials, both slots independently recoverable, an unused slot statistically indistinguishable from a used one, Elligator 2 round trips, age key parsing against age's own test keys.
+- **Core unit tests:** envelope vectors, wrong-key and no-payload images indistinguishable to the extractor, bucket trials, both slots independently recoverable, an unused slot statistically indistinguishable from a used one, Elligator 2 round trips, age key parsing against age's own test keys, PGP key import against keys made by PGPony and GnuPG (v4 and v6, locked and unlocked secret keys, refusal of RSA and NIST keys).
 - **Bit-exact cross-platform:** the CLI's output equals the Android app's output for the same inputs and seed, across devices.
 - **Steganalysis:** run Aletheia (open-source steganalysis toolkit) and a rich-model classifier against StegPony output at several payloads, on a cover set shot on the test phones. Compare with PixelKnot (F5) and plain LSB as baselines. The results set the rating thresholds in 7.4 and go into Help as plain numbers.
 - **Robustness:** for Survive-messenger, automated channel simulation in CI, and a manual channel-lab pass through every real platform before each RC, recorded with dates.
