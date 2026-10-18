@@ -29,6 +29,7 @@ When the repos are created, this file becomes `PLANNING_1_0_0.md` at each repo r
 - Oct 16, 2026: **Native JPEG carrier: all AC coefficients in every component**, including zeros and ±1; DC and MCU padding are excluded. The ordering, slots and signed ±1 rules are in FORMAT.md section 6. Carrier, J-UNIWARD costs (checked against conseal's reference implementation), CLI mode and independent libjpeg reader vectors are implemented. Output metadata follows ScrubPony's default policy (ICC kept, EXIF reduced to orientation). Phase B steganalysis and detectability calibration remain outstanding.
 - Oct 17, 2026: **JPEG detectability thresholds from the steganalysis baseline** (section 18). Color DCTR with an FLD ensemble on 792 tiles from 66 quality-95 photos off the phone sampled for Q6, folds split by capture time. Payload counted over both slots per nonzero AC coefficient: 0.10 bpnzac gave P_E 0.445, 0.19 gave 0.398, 0.39 gave 0.232, 0.78 gave 0.031. At 0.39, ideal ternary J-UNIWARD gave 0.354 and nsF5 (PixelKnot's family) 0.055. Ratings: Low up to 0.15, Medium up to 0.30, High above, deliberately below the measured points. Still to measure: other test phones and daylight scenes. Open: StegPony's binary parity embedding makes about 1.5 times the changes of ternary embedding; moving to ternary is a format change, cheapest before 1.0.
 - Oct 18, 2026: **PGP key support moves into 1.0** (from Later), requested by the user who suggested the app. A Curve25519 OpenPGP key's encryption subkey (v4 cv25519 or v6 X25519) is the same X25519 key the envelope already uses, so this is key import only, with no format change. stegpony-core reads public keys for recipients and unlocks secret keys with their passphrase to get the private half, through rpgp (the `pgp` crate, pure Rust, so the reproducible-build harness is unchanged); StegPony's own labelled HKDF keeps the reuse separate from OpenPGP's ECDH. The app imports by file or from PGPony's share sheet. RSA and NIST-curve keys cannot be used (the hidden key exchange is X25519 only); post-quantum composite keys are left out of 1.0, since only their X25519 part would apply. A live link where StegPony asks PGPony to unlock a key stays Later. Adds 2 to 3 evenings to Phase C.
+- Oct 18, 2026: **Reveal with a hardware key in 1.0, shipped in RC2**, requested by the user who suggested the app. The OpenPGP card applet (YubiKey, Nitrokey, Token2) does the Curve25519 key exchange on the card (PSO:DECIPHER returns the shared secret), so reveal sends it the ephemeral key recovered from the Elligator 2 representative and finishes on the phone; no format change. Hiding only needs the public key and never touches the card. The core's reveal takes a key-exchange callback in place of an in-memory secret; the Android side reuses PGPony Android's card layer (NFC and USB, PIN with KDF-DO, Nitrokey 3 USB fix, exclusive NFC during a session). Curve25519 card keys only. A reveal makes two card operations (one per slot), so two touches when touch-to-use is on. Open risk: a card that strictly validates points could refuse the torsion-dirty ephemeral keys; testing on real cards settles it. Test devices: a Token2 PIN+ here (OpenPGP 3.4 with X25519; factory default is RSA 2048, so the encryption key must be cv25519) and the requesting user's own key. RC2 rather than RC1 so RC1 is not delayed and imported PGP keys get tested first. 3 to 4 evenings.
 
 ## 1. Summary
 
@@ -204,6 +205,7 @@ Natural-looking text from an on-device language model with arithmetic coding. It
 - Decoy slot.
 - Keys: generate identity, import age identity, contacts by QR or paste, export recipient.
 - PGP keys: import Curve25519 public and secret keys (v4 cv25519, v6 X25519) by file or from PGPony via share, for hiding to contacts and revealing with your own key.
+- Reveal with a hardware key (OpenPGP card applet on YubiKey, Nitrokey, Token2) holding a Curve25519 encryption key, over NFC or USB (RC2).
 - Channel picker on Hide; channel profiles with last-verified dates.
 - Capacity meter and detectability rating.
 - Cover reuse warning, EXIF strip, in-app camera capture.
@@ -245,6 +247,10 @@ Same binding approach as the existing Rust cores in PassPony and VaultPony, so t
 - Honest limits in Help: the package name `com.stegpony.android` still shows in Settings > Apps and in the F-Droid client; switching can drop home-screen shortcuts on some launchers.
 - Google Play's deceptive-behavior policy may object to disguise, so if a `play` flavor ever exists, disguise is a question for that flavor (Q9). The F-Droid build always has it.
 
+### 10.5 Hardware keys
+
+Reveal with an OpenPGP card reuses PGPony Android's card layer: NFC (IsoDep) and USB CCID transports, PIN entry including the KDF-DO itersalted-S2K PIN, the Nitrokey 3 USB fix, and exclusive NFC while a session is open. StegPony reads the card's encryption-key attributes, refuses anything but cv25519 with a plain message, and calls PSO:DECIPHER once per slot. The core never sees a secret key in this mode.
+
 ## 11. Privacy posture
 
 - Nothing leaves the device. No network code, no permission for it.
@@ -263,7 +269,7 @@ The help text is written for people whose safety may depend on it: plain, specif
 
 ## 13. Architecture and stack
 
-- **stegpony-core (Rust).** Envelope (Argon2id, X25519, Elligator 2, HKDF, ChaCha20-Poly1305 from RustCrypto and dalek crates), keyed permutation, slot layout, cost functions, syndrome-trellis coder, PNG I/O (`png` crate), JPEG coefficient I/O (Q6), robust-mode pipeline and channel profiles, ECC, dictionary and zero-width codecs, age key parsing, OpenPGP Curve25519 key import (rpgp). No platform code. Fully built and tested in the cloud session.
+- **stegpony-core (Rust).** Envelope (Argon2id, X25519, Elligator 2, HKDF, ChaCha20-Poly1305 from RustCrypto and dalek crates), keyed permutation, slot layout, cost functions, syndrome-trellis coder, PNG I/O (`png` crate), JPEG coefficient I/O (Q6), robust-mode pipeline and channel profiles, ECC, dictionary and zero-width codecs, age key parsing, OpenPGP Curve25519 key import (rpgp), and reveal through an external key exchange (a callback that a hardware key answers). No platform code. Fully built and tested in the cloud session.
 - **CLI.** `stegpony` binary in the core repo: hide, reveal, capacity, simulate-channel. Used for fixtures, steganalysis runs, and as the eventual desktop CLI.
 - **Android.** `:app` (Compose, Material 3) and the core through the binding in 10.3. Kotlin layer is source-only from Cowork; NorseHorse builds with gradlew on the Mac.
 - **Format contract.** `FORMAT.md` in the core repo: envelope, slot layout, permutation, bucket table, Argon2id parameters per version, dictionary list hashes. Test vectors (`envelope_vectors.json`, `png_vectors/`, `jpeg_vectors/`, `text_vectors.json`) are release-gating on every platform.
@@ -283,7 +289,9 @@ Part-time weekday evenings. Survive-messenger is research-grade, so its estimate
 
 **Phase D: text modes.** Dictionary codec and English list, zero-width codec, per-platform survival testing, text flows in the app. 4 to 5 evenings.
 
-**RC2 = RC1 + D.**
+**Hardware-key reveal (RC2).** Core key-exchange callback, card layer ported from PGPony Android, Reveal flow with PIN and tap, tests on a Token2 PIN+ and the requesting user's key. 3 to 4 evenings.
+
+**RC2 = RC1 + D + hardware-key reveal.**
 
 **Phase E: Survive-messenger.** Literature pass, channel lab (send calibration images through each platform, record what comes back), profiles, robust embedding, ECC sizing, simulate-and-verify before send, the experimental label and per-channel dates. 8 to 12 evenings.
 
@@ -291,7 +299,7 @@ Part-time weekday evenings. Survive-messenger is research-grade, so its estimate
 
 **Phase F: release.** String freeze, localization (section 17), F-Droid metadata and store graphics, stegpony.app on the Pony family shell (index, privacy, support, help, rc/), fdroiddata MR. 4 to 5 evenings.
 
-**1.0 = A through F**, roughly 39 to 52 evenings, about ten to thirteen weeks of weekday evenings if StegPony got all of them; maintenance on the existing apps stretches that. Contingency only if the schedule breaks: E moves to 1.1 and 1.0 ships after RC2. Never cut the envelope's no-header property or the decoy's always-two-slots rule; a stego app with a tell is worse than none.
+**1.0 = A through F**, roughly 42 to 56 evenings, about eleven to fourteen weeks of weekday evenings if StegPony got all of them; maintenance on the existing apps stretches that. Contingency only if the schedule breaks: E moves to 1.1 and 1.0 ships after RC2. Never cut the envelope's no-header property or the decoy's always-two-slots rule; a stego app with a tell is worse than none.
 
 ## 15. Distribution and release engineering
 
@@ -319,7 +327,7 @@ Family set at 1.0: en, de, es, fr, zh-Hans, pt-BR, ru. Plan it as multi-agent fr
 - **Steganalysis:** run Aletheia (open-source steganalysis toolkit) and a rich-model classifier against StegPony output at several payloads, on a cover set shot on the test phones. Compare with PixelKnot (F5) and plain LSB as baselines. The results set the rating thresholds in 7.4 and go into Help as plain numbers.
 - **Robustness:** for Survive-messenger, automated channel simulation in CI, and a manual channel-lab pass through every real platform before each RC, recorded with dates.
 - **Text:** zero-width survival per platform, dictionary round-trip through copy and paste, autocorrect, and line wrapping.
-- **Android:** no Bitmap ever reaches the core (a test asserts the core input is file bytes), share-out bytes equal core output, disguise switching on several launchers, FLAG_SECURE, no INTERNET permission in the merged manifest.
+- **Android:** no Bitmap ever reaches the core (a test asserts the core input is file bytes), share-out bytes equal core output, disguise switching on several launchers, FLAG_SECURE, hardware-key reveal on a Token2 PIN+ over USB and on the requesting user's key (including whether each card accepts torsion-dirty ephemeral points), no INTERNET permission in the merged manifest.
 - **Testers:** the requesting user gets RC1 first, then the Android RC pool. Same RC pattern as the rest of the family.
 
 ## 19. iOS and desktop
