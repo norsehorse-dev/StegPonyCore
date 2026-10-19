@@ -23,24 +23,24 @@ What it does:
 
 66 photos from one Android test phone (3280x2464, quality 95, 4:2:0, all shot within a few minutes late at night), 792 tiles. Payload counts both slots, in bits per nonzero AC coefficient (bpnzac) of the cover; a tile averages 85,756 nonzero AC coefficients.
 
-| Set | Bytes per slot | bpnzac | P_E | Rating |
-|---|---|---|---|---|
-| StegPony, bucket 6 | 512 | 0.10 | 0.445 | Low |
-| StegPony, bucket 8 | 1,024 | 0.19 | 0.398 | Medium |
-| StegPony, bucket 10 | 2,048 | 0.39 | 0.232 | High |
-| StegPony, bucket 12 | 4,096 | 0.78 | 0.031 | High |
-| StegPony, bucket 14 | 8,192 | 1.56 | 0.001 | High |
-| Ideal ternary J-UNIWARD | 2,048 | 0.39 | 0.354 | |
-| nsF5 (PixelKnot family) | 2,048 | 0.39 | 0.055 | |
+| Set | Bytes per slot | bpnzac | P_E, binary (Oct 17) | P_E, ternary (Oct 19) | Rating |
+|---|---|---|---|---|---|
+| StegPony, bucket 6 | 512 | 0.10 | 0.445 | 0.465 | Low |
+| StegPony, bucket 8 | 1,024 | 0.19 | 0.398 | 0.417 | Medium |
+| StegPony, bucket 10 | 2,048 | 0.39 | 0.232 | 0.309 | High |
+| StegPony, bucket 12 | 4,096 | 0.78 | 0.031 | 0.060 | High |
+| StegPony, bucket 14 | 8,192 | 1.56 | 0.001 | | High |
+| Ideal ternary J-UNIWARD | 2,048 | 0.39 | 0.354 | | |
+| nsF5 (PixelKnot family) | 2,048 | 0.39 | 0.055 | | |
 
-Fold-to-fold spread was under 0.05 everywhere except bucket 12 (0.000 to 0.087).
+The binary column is the first run, with parity embedding; the ternary column is the same tiles after the switch to ternary embedding (format v1 as it stands). Fold-to-fold spread was under 0.05 everywhere except the 4,096-byte sets (up to 0.09).
 
 Reading it:
 
-- At the same payload StegPony is far harder to detect than F5-style embedding (P_E 0.232 against 0.055).
-- It falls short of ideal J-UNIWARD (0.354). StegPony makes about 1.5 times as many changes at the same payload, which is what binary parity embedding costs compared with ternary embedding, plus some loss from splitting the cover into two slots.
+- At the same payload StegPony is far harder to detect than F5-style embedding (P_E 0.309 against 0.055 at 2,048 bytes).
+- Ternary embedding moved every point toward a coin flip, most where it matters: at 2,048 bytes from 0.232 to 0.309, about two thirds of the way to the ideal J-UNIWARD simulation (0.354). On these cost maps ternary coding cuts J-UNIWARD distortion about 28% against the old binary code at the same payload. What remains of the gap is the code height (4) and the two-slot layout.
 - Nearly all changes land in luma: chroma at quality 95 is too smooth to be cheap.
 
-Thresholds: Low up to 0.15 bpnzac, Medium up to 0.30, High above. They sit below the measured points on purpose. This detector trained on about 630 pairs; detectors trained on tens of thousands of images, deep-learning detectors (SRNet-class), and full-size photos (more coefficients for the detector to pool) all detect more than this baseline does. The rating counts only the elements the engine uses: each slot is capped at 2 million elements, about a third of a 12-megapixel photo's AC coefficients, so on such a photo with a similar share of nonzero coefficients Low leaves room for about 8 KB per slot.
+Thresholds: Low up to 0.18 bpnzac, Medium up to 0.38, High above, so Low ends where P_E falls to about 0.42 and Medium where it falls to about 0.31. They sit below the measured points on purpose. This detector trained on about 630 pairs; detectors trained on tens of thousands of images, deep-learning detectors (SRNet-class), and full-size photos (more coefficients for the detector to pool) all detect more than this baseline does. The rating counts only the elements the engine uses: each slot is capped at 2 million elements, about a third of a 12-megapixel photo's AC coefficients, so on such a photo with a similar share of nonzero coefficients Low leaves room for about 10 KB per slot.
 
 Limits of this run: one phone, one quality setting, one late-night session. Daylight scenes with sky and walls have fewer nonzero coefficients, which the bpnzac rule accounts for, but they have not been measured. Re-run with other phones and daylight shots before 1.0.

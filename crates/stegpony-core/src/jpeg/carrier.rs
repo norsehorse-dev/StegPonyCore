@@ -122,12 +122,14 @@ pub struct Hidden {
 
 /// Upper bounds, in payload bits per nonzero AC coefficient, for the Low and Medium
 /// ratings. Calibrated Oct 2026 with color DCTR and an FLD ensemble on 792 tiles
-/// (512x512) cut from 66 quality-95 phone photos (tools/steganalysis): 0.10 bpnzac
-/// gave P_E 0.445, 0.19 gave 0.398, 0.39 gave 0.232, 0.78 gave 0.031. The bounds sit
-/// below the measured points on purpose, because larger training sets, deep-learning
-/// detectors and full-size photos all detect more than this baseline does.
-pub const LOW_MAX_BPNZAC: f64 = 0.15;
-pub const MEDIUM_MAX_BPNZAC: f64 = 0.30;
+/// (512x512) cut from 66 quality-95 phone photos (tools/steganalysis), with ternary
+/// embedding: 0.10 bpnzac gave P_E 0.465, 0.19 gave 0.417, 0.39 gave 0.309, 0.78 gave
+/// 0.060. Low ends where P_E falls to about 0.42 and Medium where it falls to about
+/// 0.31. The bounds sit below the measured points on purpose, because larger training
+/// sets, deep-learning detectors and full-size photos all detect more than this
+/// baseline does.
+pub const LOW_MAX_BPNZAC: f64 = 0.18;
+pub const MEDIUM_MAX_BPNZAC: f64 = 0.38;
 
 /// How detectable a payload of `bucket` would be in this cover: both slots' bits
 /// (the second slot is always filled) per nonzero AC coefficient among the elements
