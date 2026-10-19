@@ -59,6 +59,10 @@ fn sym(i: isize, n: usize) -> usize {
 // Separable 1-D basis/filter responses make each 2-D impact an outer product. Only
 // magnitudes enter the cost, so they are stored as absolute values.
 type Impacts = [[[f64; SUPPORT]; 8]; 2];
+fn impacts_f32() -> &'static [[[f32; SUPPORT]; 8]; 2] {
+    static CACHE: OnceLock<[[[f32; SUPPORT]; 8]; 2]> = OnceLock::new();
+    CACHE.get_or_init(|| impacts().map(|f| f.map(|k| k.map(|v| v as f32))))
+}
 fn impacts() -> &'static Impacts {
     static CACHE: OnceLock<Impacts> = OnceLock::new();
     CACHE.get_or_init(|| {
@@ -153,6 +157,41 @@ impl Model {
         Self { width: rw, inverse }
     }
 
+    /// Costs of all 64 coefficients of block `(bx, by)`, each scaled by its
+    /// quantization step (index 0, DC, is computed but never used). The impact of a
+    /// unit change is separable, so each subband's 23x23 window is summed in two
+    /// passes shared by the whole block: first along rows for each horizontal
+    /// frequency, then down the columns for each vertical one. Same result as
+    /// [`Model::cost`] for every coefficient, about six times fewer operations.
+    pub fn block_costs(&self, bx: usize, by: usize, quant: &[u16; 64]) -> [f32; 64] {
+        let impact = impacts_f32();
+        let mut rho = [0f32; 64];
+        for (f, (fy, fx)) in SUBBANDS.into_iter().enumerate() {
+            let inverse = &self.inverse[f];
+            let mut rows = [[0f32; 8]; SUPPORT];
+            for (y, row) in rows.iter_mut().enumerate() {
+                let start = (by * 8 + y) * self.width + bx * 8;
+                let line = &inverse[start..start + SUPPORT];
+                for (u, out) in row.iter_mut().enumerate() {
+                    *out = impact[fx][u].iter().zip(line).map(|(a, b)| a * b).sum();
+                }
+            }
+            for v in 0..8 {
+                let iy = &impact[fy][v];
+                for u in 0..8 {
+                    rho[v * 8 + u] += iy.iter().zip(&rows).map(|(a, r)| a * r[u]).sum::<f32>();
+                }
+            }
+        }
+        for (r, &q) in rho.iter_mut().zip(quant) {
+            *r = (*r as f64 * q as f64).clamp(1e-6, 1e8) as f32;
+        }
+        rho
+    }
+
+    /// One coefficient's cost, computed directly. Kept as the reference that
+    /// [`Model::block_costs`] is tested against.
+    #[cfg(test)]
     pub fn cost(&self, bx: usize, by: usize, k: usize, quant: u16) -> f32 {
         let impact = impacts();
         let mut rho = 0.0f64;
@@ -186,6 +225,29 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn block_costs_match_per_coefficient_costs() {
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/jpeg/baseline_420.jpg"
+        ))
+        .unwrap();
+        let j = super::super::Jpeg::parse(&bytes).unwrap();
+        for c in &j.components {
+            let m = Model::new(c);
+            for (bx, by) in [(0, 0), (c.width_blocks - 1, c.height_blocks - 1), (1, 2)] {
+                let all = m.block_costs(bx, by, &c.quant);
+                for (k, &a) in all.iter().enumerate().skip(1) {
+                    let one = m.cost(bx, by, k, c.quant[k]);
+                    assert!(
+                        ((a - one) / one).abs() < 1e-4,
+                        "{bx},{by},{k}: {a} vs {one}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn symmetric_edges() {
         assert_eq!((sym(-1, 8), sym(8, 8), sym(-17, 8)), (0, 7, 0));

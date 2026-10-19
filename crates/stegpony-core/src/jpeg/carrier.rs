@@ -79,28 +79,45 @@ impl Cover for JpegCover {
         let v = self.value(t);
         (v < MAX_COEF, v > -MAX_COEF)
     }
+    /// Builds one component's cost model at a time, computes whole blocks for the
+    /// blocks that hold requested elements, then looks the requested elements up.
     fn costs(&self, sets: &[&[u64]]) -> Vec<Vec<f32>> {
         use rayon::prelude::*;
         let mut out: Vec<Vec<f32>> = sets.iter().map(|s| vec![0.0; s.len()]).collect();
-        // One component's maps at a time, and only for components with requested
-        // elements, so memory holds a single cost model.
         for (ci, c) in self.jpeg.components.iter().enumerate() {
             let (lo, hi) = (self.offsets[ci], self.offsets[ci + 1]);
-            if !sets
-                .iter()
-                .any(|ts| ts.iter().any(|&t| (lo..hi).contains(&t)))
-            {
+            let blocks = c.width_blocks * c.height_blocks;
+            let mut need = vec![false; blocks];
+            for ts in sets {
+                for &t in ts.iter() {
+                    if (lo..hi).contains(&t) {
+                        need[((t - lo) / 63) as usize] = true;
+                    }
+                }
+            }
+            if !need.contains(&true) {
                 continue;
             }
             let model = costs::Model::new(c);
+            let table: Vec<[f32; 64]> = (0..blocks)
+                .into_par_iter()
+                .map(|b| {
+                    if need[b] {
+                        model.block_costs(b % c.width_blocks, b / c.width_blocks, &c.quant)
+                    } else {
+                        [0.0; 64]
+                    }
+                })
+                .collect();
+            drop(model);
             for (values, ts) in out.iter_mut().zip(sets) {
                 values
                     .par_iter_mut()
                     .zip(ts.par_iter())
                     .for_each(|(v, &t)| {
-                        let (component, bx, by, k) = self.address(t);
-                        if component == ci {
-                            *v = model.cost(bx, by, k, c.quant[k]);
+                        if (lo..hi).contains(&t) {
+                            let local = (t - lo) as usize;
+                            *v = table[local / 63][local % 63 + 1];
                         }
                     });
             }
