@@ -1,10 +1,15 @@
 //! Native JPEG carrier; FORMAT.md section 6. All content-block AC coefficients,
-//! including zeros, participate, so embedding cannot change enumeration.
+//! including zeros, participate, so embedding cannot change enumeration. An element's
+//! symbol is its coefficient modulo 3.
 use super::{costs, Jpeg};
 use crate::engine::{self, Capacity, Cover, Detectability};
 use crate::envelope::{bucket_for, bucket_size, HideKey, Payload, RevealKey};
 use crate::error::Result;
 use rand_core::{CryptoRng, RngCore};
+
+/// Largest AC magnitude an 8-bit JPEG can code; a change never moves a coefficient
+/// past it.
+const MAX_COEF: i16 = 1023;
 
 pub struct JpegCover {
     jpeg: Jpeg,
@@ -39,6 +44,11 @@ impl JpegCover {
         self.jpeg
     }
 
+    fn value(&self, t: u64) -> i16 {
+        let (ci, bx, by, k) = self.address(t);
+        self.jpeg.components[ci].block(bx, by)[k]
+    }
+
     fn address(&self, t: u64) -> (usize, usize, usize, usize) {
         let ci = self.offsets.partition_point(|&o| o <= t) - 1;
         let local = (t - self.offsets[ci]) as usize;
@@ -62,9 +72,12 @@ impl Cover for JpegCover {
     fn slot_counts(&self) -> [u64; 2] {
         self.counts
     }
-    fn parity(&self, t: u64) -> u8 {
-        let (ci, bx, by, k) = self.address(t);
-        (self.jpeg.components[ci].block(bx, by)[k] & 1) as u8
+    fn symbol(&self, t: u64) -> u8 {
+        (self.value(t) as i32).rem_euclid(3) as u8
+    }
+    fn directions(&self, t: u64) -> (bool, bool) {
+        let v = self.value(t);
+        (v < MAX_COEF, v > -MAX_COEF)
     }
     fn costs(&self, sets: &[&[u64]]) -> Vec<Vec<f32>> {
         use rayon::prelude::*;
@@ -94,16 +107,10 @@ impl Cover for JpegCover {
         }
         out
     }
-    fn flip(&mut self, t: u64, up: bool) {
+    fn step(&mut self, t: u64, up: bool) {
         let (ci, bx, by, k) = self.address(t);
         let v = &mut self.jpeg.components[ci].block_mut(bx, by)[k];
-        *v += if *v >= 1023 {
-            -1
-        } else if *v <= -1023 || up {
-            1
-        } else {
-            -1
-        };
+        *v += if up { 1 } else { -1 };
     }
 }
 

@@ -9,7 +9,7 @@ Part of the Pony family of privacy tools by NorseHorse. The Android app, and lat
 - **Headerless envelope.** ChaCha20-Poly1305 under a key from Argon2id (passphrase) or X25519 (public key). Lengths are padded to a fixed bucket table and stored masked. See [FORMAT.md](FORMAT.md).
 - **age keys.** An `age1...` recipient is a StegPony recipient and an `AGE-SECRET-KEY-1...` identity reveals. Ephemeral keys are Elligator 2 encoded with torsion-dirty points, so they look like random bytes too.
 - **Decoy.** Every image has two slots. Hide a second payload under a second secret, or the second slot gets random filler, and nobody can tell which.
-- **Lossless mode.** PNG covers (8-bit gray, RGB, RGBA) and JPEG covers converted to PNG. Content-adaptive costs (HILL) and syndrome-trellis codes keep changes few and in textured areas.
+- **Lossless mode.** PNG covers (8-bit gray, RGB, RGBA) and JPEG covers converted to PNG. Content-adaptive costs (HILL) and ternary syndrome-trellis codes keep changes few and in textured areas.
 
 Native JPEG (Phase B):
 

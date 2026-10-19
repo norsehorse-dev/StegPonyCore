@@ -189,33 +189,55 @@ def prp_key(locate: bytes, slot: int) -> bytes:
     return hkdf_expand(locate, INFO_PRP + bytes([slot]), 16)
 
 
-# Syndrome-trellis extraction. FORMAT.md 4.3
+# Ternary syndrome-trellis extraction. FORMAT.md 4.3
+STC_H = 4
+
+
 def stc_columns(wmax):
-    st = 0x5374_6567_506F_6E79 ^ wmax
+    """Each column as a list of STC_H trits, row 0 first."""
+    st = 0x5374_6567_5465_726E ^ wmax
     cols = []
     for _ in range(wmax):
         st = (st + 0x9E3779B97F4A7C15) & M64
         z = st
         z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & M64
         z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & M64
-        v = (z ^ (z >> 31)) & 0xFFFFFFFF
-        cols.append((v & 0x7F) | 0x01 | 0x40)
+        v = z ^ (z >> 31)
+        col = [(v // 3 ** k) % 3 for k in range(STC_H)]
+        if col[0] == 0:
+            col[0] = 1
+        if col[-1] == 0:
+            col[-1] = 1
+        cols.append(col)
     return cols
 
 
 def stc_extract(y, m):
     n = len(y)
     cols = stc_columns(-(-n // m))
-    s, out = 0, []
+    s, out = [0] * STC_H, []
     for i in range(m):
         start, end = i * n // m, (i + 1) * n // m
-        mask = (1 << min(7, m - i)) - 1
+        rows = min(STC_H, m - i)
         for j in range(start, end):
-            if y[j] & 1:
-                s ^= cols[j - start] & mask
-        out.append(s & 1)
-        s >>= 1
+            col = cols[j - start]
+            for k in range(rows):
+                s[k] = (s[k] + y[j] * col[k]) % 3
+        out.append(s[0])
+        s = s[1:] + [0]
     return out
+
+
+def trits_for_bits(bits):
+    return 7 * -(-bits // 11)
+
+
+def trits_to_bytes(trits, length):
+    bits = []
+    for g in range(0, len(trits), 7):
+        v = sum(t * 3 ** k for k, t in enumerate(trits[g:g + 7]))
+        bits.extend((v >> k) & 1 for k in range(11))
+    return bits_to_bytes(bits[:8 * length])
 
 
 def bits_to_bytes(bits):
@@ -327,8 +349,8 @@ class LosslessImage:
         p = t // self.cc
         return self._slot_px(p) if self._opaque(p) else None
 
-    def parity(self, t):
-        return self.data[(t // self.cc) * self.ch + t % self.cc] & 1
+    def symbol(self, t):
+        return self.data[(t // self.cc) * self.ch + t % self.cc] % 3
 
     def positions(self, key, slot, n):
         cache = (key, slot, n)
@@ -369,8 +391,8 @@ class JpegImage(LosslessImage):
     def slot_of(self, t):
         return self.slots[t]
 
-    def parity(self, t):
-        return self.data[t] & 1
+    def symbol(self, t):
+        return self.data[t] % 3  # Python's % is already non-negative for negatives
 
 
 def reveal(img, keys):
@@ -387,14 +409,15 @@ def reveal(img, keys):
         n = min(img.counts[slot], MAX_ELEMENTS_PER_SLOT)
         for mode, locate, secret in locs:
             head_len = 20 if mode == "passphrase" else 36
-            head_region = max(n // 16, 8 * 8 * head_len)
+            head_trits = trits_for_bits(8 * head_len)
+            head_region = max(n // 16, 8 * head_trits)
             if n < 2 * head_region:
                 continue
             pos = img.positions(prp_key(locate, slot), slot, n)
             if len(pos) != n:
                 continue
-            y = [img.parity(t) for t in pos]
-            head = bits_to_bytes(stc_extract(y[:head_region], 8 * head_len))
+            y = [img.symbol(t) for t in pos]
+            head = trits_to_bytes(stc_extract(y[:head_region], head_trits), head_len)
             if mode == "passphrase":
                 okm = hkdf(None, argon2id(secret, head[:16]), INFO_BODY, 36)
             else:
@@ -407,10 +430,10 @@ def reveal(img, keys):
             k = struct.unpack("<I", bytes(a ^ b for a, b in zip(head[-4:], okm[32:])))[0]
             if k >= NUM_BUCKETS:
                 continue
-            bits = 8 * bucket_size(k)
-            if bits > (n - head_region) // 2:
+            body_trits = trits_for_bits(8 * bucket_size(k))
+            if 3 * body_trits > n - head_region:
                 continue
-            body = bits_to_bytes(stc_extract(y[head_region:], bits))
+            body = trits_to_bytes(stc_extract(y[head_region:], body_trits), bucket_size(k))
             try:
                 plain = ChaCha20Poly1305(okm[:32]).decrypt(NONCE, body, None)
             except InvalidTag:

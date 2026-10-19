@@ -10,14 +10,17 @@ use crate::envelope::{
 };
 use crate::error::{Error, Result};
 use crate::prp::Prp;
-use crate::stc::{self, bits_to_bytes, bytes_to_bits};
+use crate::stc::{self, bytes_to_trits, trits_for_bits, trits_to_bytes};
 
-/// At most this many elements of a slot are used. Bounds Viterbi memory (16 bytes per
-/// element) to about 32 MiB per slot on a phone.
+/// At most this many elements of a slot are used. Bounds Viterbi memory (24 bytes per
+/// element) to about 48 MiB for a slot; the slots are coded one after the other.
 pub const MAX_ELEMENTS_PER_SLOT: u64 = 2_000_000;
 
-/// The body never carries more than one message bit per this many elements.
-pub const MIN_ELEMENTS_PER_BIT: usize = 2;
+/// The body never carries more than one message trit per this many elements.
+pub const MIN_ELEMENTS_PER_TRIT: usize = 3;
+
+/// Head region elements per head trit.
+pub const HEAD_ELEMENTS_PER_TRIT: usize = 8;
 
 /// A cover medium the engine can write into. Elements are numbered `0..domain()`; each
 /// belongs to slot 0, slot 1, or neither. Slot membership and usability must not depend
@@ -28,14 +31,16 @@ pub trait Cover: Sync {
     fn domain(&self) -> u64;
     fn slot_of(&self, t: u64) -> Option<u8>;
     fn slot_counts(&self) -> [u64; 2];
-    fn parity(&self, t: u64) -> u8;
-    /// Cost of changing each element's parity, computed on the unmodified cover: one
-    /// list per set of elements, in the same order. Every slot's elements come in one
-    /// call, so a carrier can build whatever cost maps it needs once.
+    /// The element's symbol: its value modulo 3 (0, 1 or 2).
+    fn symbol(&self, t: u64) -> u8;
+    /// Whether the element may move by +1 and by -1.
+    fn directions(&self, t: u64) -> (bool, bool);
+    /// Cost of a ±1 change to each element, computed on the unmodified cover: one list
+    /// per set of elements, in the same order. Every slot's elements come in one call,
+    /// so a carrier can build whatever cost maps it needs once.
     fn costs(&self, sets: &[&[u64]]) -> Vec<Vec<f32>>;
-    /// Changes the element's parity by ±1. `up` is a fair coin for when both directions
-    /// are allowed.
-    fn flip(&mut self, t: u64, up: bool);
+    /// Moves the element by +1 (`up`) or -1.
+    fn step(&mut self, t: u64, up: bool);
 }
 
 /// The two regions of a slot's element sequence.
@@ -45,11 +50,10 @@ pub struct Layout {
     pub body: usize,
 }
 
-/// Head region size: one sixteenth of the slot, but never more than one head bit per
+/// Head region size: one sixteenth of the slot, but never more than one head trit per
 /// eight elements.
 pub fn layout(n: usize, mode: Mode) -> Option<Layout> {
-    let head_bits = mode.head_len() * 8;
-    let head = (n / 16).max(head_bits * 8);
+    let head = (n / 16).max(head_trits(mode) * HEAD_ELEMENTS_PER_TRIT);
     if n < head * 2 {
         return None;
     }
@@ -57,6 +61,15 @@ pub fn layout(n: usize, mode: Mode) -> Option<Layout> {
         head,
         body: n - head,
     })
+}
+
+fn head_trits(mode: Mode) -> usize {
+    trits_for_bits(mode.head_len() * 8)
+}
+
+/// Whether a bucket's body fits a body region.
+fn body_fits(bucket: usize, body: usize) -> bool {
+    trits_for_bits(bucket_size(bucket) * 8) * MIN_ELEMENTS_PER_TRIT <= body
 }
 
 fn slot_len<C: Cover>(cover: &C, slot: u8) -> usize {
@@ -110,16 +123,16 @@ pub enum Detectability {
     High,
 }
 
-fn body_bits_available(n: usize) -> usize {
-    layout(n, Mode::PublicKey).map_or(0, |l| l.body / MIN_ELEMENTS_PER_BIT)
+fn body_available(n: usize) -> usize {
+    layout(n, Mode::PublicKey).map_or(0, |l| l.body)
 }
 
 pub fn capacity<C: Cover>(cover: &C) -> Capacity {
     let elements = [slot_len(cover, 0), slot_len(cover, 1)];
-    let bits = body_bits_available(elements[0]).min(body_bits_available(elements[1]));
+    let body = body_available(elements[0]).min(body_available(elements[1]));
     let max_bucket = (0..envelope::NUM_BUCKETS)
         .rev()
-        .find(|&k| bucket_size(k) * 8 <= bits);
+        .find(|&k| body_fits(k, body));
     let max_text_bytes = max_bucket.map_or(0, |k| bucket_size(k) - TAG_LEN - 5);
     Capacity {
         max_bucket,
@@ -185,7 +198,7 @@ pub fn hide<C: Cover, R: RngCore + CryptoRng>(
         let slot = slot as u8;
         let n = slot_len(cover, slot);
         let layout = layout(n, sealed.mode).ok_or(Error::CoverTooSmall)?;
-        if bucket_size(bucket) * 8 > layout.body / MIN_ELEMENTS_PER_BIT {
+        if !body_fits(bucket, layout.body) {
             return Err(Error::PayloadTooLarge {
                 needed: primary.0.framed_len(),
                 available: cap.max_text_bytes,
@@ -203,41 +216,60 @@ pub fn hide<C: Cover, R: RngCore + CryptoRng>(
         });
     }
 
-    // All costs and parities come from the unmodified cover before anything changes. The
-    // four codes (head and body of each slot) are independent and run in parallel; the
-    // flips are then applied in slot order, so the random directions are drawn in the
-    // same order whatever the thread count.
+    // All costs and symbols come from the unmodified cover before anything changes.
+    // The slots are coded one after the other, which bounds Viterbi memory to one slot;
+    // within a slot the head and body codes run in parallel. A change's direction is
+    // part of the code's answer, so no randomness is drawn here.
     let view: &C = cover;
     let sets: Vec<&[u64]> = plans.iter().map(|p| p.positions.as_slice()).collect();
     let costs = view.costs(&sets);
-    let per_slot: Vec<Result<Vec<u64>>> = plans
-        .par_iter()
-        .zip(costs.par_iter())
-        .map(|(plan, costs)| {
-            let x: Vec<u8> = plan.positions.iter().map(|&t| view.parity(t)).collect();
-            let (hx, bx) = x.split_at(plan.layout.head);
-            let (hc, bc) = costs.split_at(plan.layout.head);
-            let (hy, by) = rayon::join(
-                || stc::embed(hx, hc, &bytes_to_bits(&plan.sealed.head)),
-                || stc::embed(bx, bc, &bytes_to_bits(&plan.sealed.body)),
-            );
-            let (hy, by) = (hy?, by?);
-            Ok(x.iter()
-                .zip(hy.iter().chain(by.iter()))
-                .zip(&plan.positions)
-                .filter(|((old, new), _)| old != new)
-                .map(|(_, &t)| t)
-                .collect())
-        })
-        .collect();
-    let mut flips: Vec<u64> = Vec::new();
-    for slot_flips in per_slot {
-        flips.extend(slot_flips?);
+    let mut changes: Vec<(u64, bool)> = Vec::new();
+    for (plan, costs) in plans.iter().zip(&costs) {
+        let x: Vec<u8> = plan.positions.par_iter().map(|&t| view.symbol(t)).collect();
+        let (up, down): (Vec<f32>, Vec<f32>) = plan
+            .positions
+            .par_iter()
+            .zip(costs.par_iter())
+            .map(|(&t, &c)| {
+                let (u, d) = view.directions(t);
+                (
+                    if u { c } else { f32::INFINITY },
+                    if d { c } else { f32::INFINITY },
+                )
+            })
+            .unzip();
+        let h = plan.layout.head;
+        let (hy, by) = rayon::join(
+            || {
+                stc::embed(
+                    &x[..h],
+                    &up[..h],
+                    &down[..h],
+                    &bytes_to_trits(&plan.sealed.head),
+                )
+            },
+            || {
+                stc::embed(
+                    &x[h..],
+                    &up[h..],
+                    &down[h..],
+                    &bytes_to_trits(&plan.sealed.body),
+                )
+            },
+        );
+        let (hy, by) = (hy?, by?);
+        for ((&old, &new), &t) in x
+            .iter()
+            .zip(hy.iter().chain(by.iter()))
+            .zip(&plan.positions)
+        {
+            if new != old {
+                changes.push((t, new == (old + 1) % 3));
+            }
+        }
     }
-    for t in flips {
-        let mut c = [0u8; 1];
-        rng.try_fill_bytes(&mut c).map_err(|_| Error::Rng)?;
-        cover.flip(t, c[0] & 1 == 1);
+    for (t, up) in changes {
+        cover.step(t, up);
     }
     Ok(())
 }
@@ -257,17 +289,18 @@ pub fn reveal<C: Cover>(cover: &C, keys: &[RevealKey]) -> Result<Option<Payload>
             if positions.len() != n {
                 continue;
             }
-            let y: Vec<u8> = positions.iter().map(|&t| cover.parity(t)).collect();
+            let y: Vec<u8> = positions.iter().map(|&t| cover.symbol(t)).collect();
             let (hy, by) = y.split_at(layout.head);
-            let head = bits_to_bytes(&stc::extract(hy, loc.mode.head_len() * 8)?);
+            let head_len = loc.mode.head_len();
+            let head = trits_to_bytes(&stc::extract(hy, head_trits(loc.mode))?, head_len);
             let Some(opened) = open_head(loc.key, &head)? else {
                 continue;
             };
-            let bits = bucket_size(opened.bucket) * 8;
-            if bits > layout.body / MIN_ELEMENTS_PER_BIT {
+            if !body_fits(opened.bucket, layout.body) {
                 continue;
             }
-            let body = bits_to_bytes(&stc::extract(by, bits)?);
+            let size = bucket_size(opened.bucket);
+            let body = trits_to_bytes(&stc::extract(by, trits_for_bits(size * 8))?, size);
             if let Some(p) = open_body(&opened, &body) {
                 return Ok(Some(p));
             }
@@ -278,5 +311,5 @@ pub fn reveal<C: Cover>(cover: &C, keys: &[RevealKey]) -> Result<Option<Payload>
 
 /// Head region element count for the larger head, exposed for capacity reporting.
 pub fn min_slot_elements() -> usize {
-    PUBLIC_KEY_HEAD_LEN * 8 * 8 * 2
+    trits_for_bits(PUBLIC_KEY_HEAD_LEN * 8) * HEAD_ELEMENTS_PER_TRIT * 2
 }

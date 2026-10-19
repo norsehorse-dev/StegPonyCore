@@ -268,8 +268,13 @@ impl Cover for LosslessCover {
         self.counts
     }
 
-    fn parity(&self, t: u64) -> u8 {
-        self.raster.data[self.raster.sample_index(t)] & 1
+    fn symbol(&self, t: u64) -> u8 {
+        self.raster.data[self.raster.sample_index(t)] % 3
+    }
+
+    fn directions(&self, t: u64) -> (bool, bool) {
+        let v = self.raster.data[self.raster.sample_index(t)];
+        (v < 255, v > 0)
     }
 
     /// One HILL plane per color channel, built once for all sets and dropped before the
@@ -293,15 +298,10 @@ impl Cover for LosslessCover {
         out
     }
 
-    fn flip(&mut self, t: u64, up: bool) {
+    fn step(&mut self, t: u64, up: bool) {
         let i = self.raster.sample_index(t);
-        let v = self.raster.data[i];
-        self.raster.data[i] = match v {
-            255 => 254,
-            0 => 1,
-            _ if up => v + 1,
-            _ => v - 1,
-        };
+        let v = &mut self.raster.data[i];
+        *v = if up { *v + 1 } else { *v - 1 };
     }
 }
 

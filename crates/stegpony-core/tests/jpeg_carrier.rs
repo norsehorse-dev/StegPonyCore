@@ -39,11 +39,15 @@ fn all_ac_geometry_and_invariant_membership() {
                     for k in 1..64 {
                         let slot = ((bx + by) & 1) as u8;
                         assert_eq!(cover.slot_of(t), Some(slot));
-                        assert_eq!(cover.parity(t), (c.block(bx, by)[k] & 1) as u8);
-                        counts[slot as usize] += 1;
-                        cover.flip(t, t & 1 == 0);
+                        let v = c.block(bx, by)[k] as i32;
+                        assert_eq!(cover.symbol(t) as i32, v.rem_euclid(3));
+                        let (up, down) = cover.directions(t);
+                        assert!(up || down);
+                        cover.step(t, up);
                         assert_eq!(cover.slot_of(t), Some(slot));
-                        assert_ne!(cover.parity(t), (c.block(bx, by)[k] & 1) as u8);
+                        let moved = if up { v + 1 } else { v - 1 };
+                        assert_eq!(cover.symbol(t) as i32, moved.rem_euclid(3));
+                        counts[slot as usize] += 1;
                         t += 1;
                     }
                 }
@@ -65,16 +69,34 @@ fn all_ac_geometry_and_invariant_membership() {
 #[test]
 fn zero_crossings_and_signed_limits_are_usable() {
     let mut j = Jpeg::parse(&fixture("gray.jpg")).unwrap();
-    let values = [0, 1, -1, 1023, -1023, i16::MAX, i16::MIN];
-    j.components[0].block_mut(0, 0)[1..8].copy_from_slice(&values);
-    for up in [false, true] {
-        let mut c = JpegCover::new(j.clone());
-        for t in 0..7 {
-            c.flip(t, up);
-        }
-        for (old, new) in values.iter().zip(&c.jpeg().components[0].block(0, 0)[1..8]) {
-            assert_eq!(old.abs_diff(*new), 1);
-            assert_ne!(old & 1, new & 1);
+    let values = [0, 1, -1, 2, -2, 1022, 1023, -1023, i16::MAX, i16::MIN];
+    j.components[0].block_mut(0, 0)[1..11].copy_from_slice(&values);
+    let c = JpegCover::new(j.clone());
+    let want = [
+        (true, true),
+        (true, true),
+        (true, true),
+        (true, true),
+        (true, true),
+        (true, true),
+        (false, true),
+        (true, false),
+        (false, true),
+        (true, false),
+    ];
+    for (t, (&v, &dirs)) in values.iter().zip(&want).enumerate() {
+        assert_eq!(c.directions(t as u64), dirs, "value {v}");
+        assert_eq!(c.symbol(t as u64) as i32, (v as i32).rem_euclid(3));
+    }
+    // Every allowed step crosses to a different symbol, through zero included.
+    for (t, &(up, down)) in want.iter().enumerate() {
+        for (dir, allowed) in [(true, up), (false, down)] {
+            if allowed {
+                let mut m = JpegCover::new(j.clone());
+                let before = m.symbol(t as u64);
+                m.step(t as u64, dir);
+                assert_ne!(m.symbol(t as u64), before);
+            }
         }
     }
 }

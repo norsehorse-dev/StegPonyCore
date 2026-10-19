@@ -90,7 +90,7 @@ A slot with nothing in it carries a filler: a random 32-byte locate key, a rando
 
 ## 4. Slots and embedding
 
-A carrier exposes elements numbered `0..T`. Each element belongs to slot 0, slot 1, or neither, and has a parity bit that the writer can flip at some cost. Membership and usability must not depend on anything embedding changes.
+A carrier exposes elements numbered `0..T`. Each element belongs to slot 0, slot 1, or neither, and has an integer value that the writer can move by +1 or -1 at some cost. Its symbol is the value modulo 3 (0, 1 or 2, also for negative values), so either change moves it to a different symbol. Membership and usability must not depend on anything embedding changes.
 
 Every image carries two envelopes, one per slot: the payload and a decoy, or the payload and a filler. Which slot gets which is a fair coin.
 
@@ -112,26 +112,33 @@ The slot's element sequence is `π(0), π(1), ...` filtered to the elements of s
 
 ### 4.2 Head and body regions
 
+Bytes become trits (section 4.3) at 7 trits per started group of 11 bits:
+
 ```
-head_bits   = 8 * head length (160 passphrase, 288 public key)
-head_region = max(n / 16, 8 * head_bits)
+trits(bits) = 7 * ceil(bits / 11)
+head_trits  = trits(8 * head length)      105 passphrase, 189 public key
+head_region = max(n / 16, 8 * head_trits)
 body_region = n - head_region
 ```
 
-The first `head_region` elements carry the head, the rest carry the body. A slot needs `n >= 2 * head_region`. A body of bucket `k` needs `8 * bucket_size(k) <= body_region / 2`.
+The first `head_region` elements carry the head, the rest carry the body. A slot needs `n >= 2 * head_region`. A body of bucket `k` needs `3 * trits(8 * bucket_size(k)) <= body_region`.
 
 A reader tries each slot with each of its keys: derive the positions, read the head, derive the body key, unmask `k` (reject if `k >= 37` or the body does not fit), read the body, open the AEAD. A wrong key and an empty slot both end in a failed tag.
 
 ### 4.3 Syndrome-trellis code
 
-Bits are taken from bytes least significant bit first. To place `m` bits in `n` elements:
+The code is ternary: it works on element symbols and message trits over GF(3).
 
-- Constraint height `h = 7`.
-- `wmax = ceil(n / m)`. The submatrix columns are `c_j` for `j` in `0..wmax`: draw `v` from SplitMix64 seeded with `0x5374_6567_506f_6e79 XOR wmax` (one draw per column, low 32 bits), `c_j = (v & 0x7f) | 0x01 | 0x40`.
-- Block `i` (message bit `i`) covers elements `floor(i·n/m) .. floor((i+1)·n/m)`; element `j` of the slice uses column `c_(j - start)`, masked to the rows that exist: `(1 << min(h, m - i)) - 1`.
-- Extraction: `s = 0`; for each block, XOR in the masked column of every element whose parity is 1; message bit `i` is `s & 1`; then `s >>= 1`.
+Bytes to trits: bits are taken from bytes least significant bit first and grouped by 11, the last group padded with zero bits. A group's value `v = sum(bit_k * 2^k)` (below 2048) is written as 7 base-3 digits, least significant first. Reading reverses this: a group of 7 trits gives `v = sum(trit_k * 3^k)`, whose low 11 bits are the group's bits (a value of 2048 or more only comes from reading with the wrong key). Extra bits past the byte length are dropped.
 
-Writers choose stego parities with the Viterbi algorithm to minimize total cost; any choice whose extraction gives the message is valid. Each element whose parity changes is moved by ±1 (see the carrier for direction).
+To place `m` trits in `n` elements:
+
+- Constraint height `h = 4`. States and columns are vectors of `h` trits; row 0 is the current message trit.
+- `wmax = ceil(n / m)`. The submatrix columns are `c_j` for `j` in `0..wmax`: draw `v` from SplitMix64 seeded with `0x5374_6567_5465_726e XOR wmax` (one 64-bit draw per column); trit `k` of the column is `floor(v / 3^k) mod 3` for `k` in `0..h`, except that a 0 in trit 0 or trit `h - 1` becomes 1.
+- Block `i` (message trit `i`) covers elements `floor(i·n/m) .. floor((i+1)·n/m)`; element `j` of the slice uses column `c_(j - start)`, of which only rows `0 .. min(h, m - i)` exist.
+- Extraction: `s = (0, ..., 0)`; for each element of block `i` with symbol `y`, add `y · c` to `s` trit by trit modulo 3, over the rows that exist; message trit `i` is `s[0]`; then shift `s` down one row (`s[k] = s[k + 1]`, the top row becomes 0).
+
+Writers choose stego symbols with the Viterbi algorithm to minimize the total cost of the changes; any choice whose extraction gives the message is valid. A change moves an element by +1 or -1, and the direction is part of the code's answer: +1 gives symbol `x + 1`, -1 gives `x - 1` (modulo 3).
 
 ## 5. Lossless carrier (PNG)
 
@@ -139,7 +146,7 @@ Input: PNG, 8-bit gray, gray+alpha, RGB or RGBA. Palette, 16-bit, sub-byte and a
 
 - Elements are the color samples (not alpha) of pixels whose alpha is 255 (every pixel, without alpha), numbered `t = pixel_index · color_channels + channel`, pixels in row-major order.
 - Slot of a pixel at `(x, y)`: `((x >> 3) + (y >> 3)) & 1`.
-- Parity is the sample's low bit. A change moves the sample by ±1: 255 always goes to 254, 0 to 1, otherwise a fair coin picks the direction.
+- The symbol is the sample value modulo 3. A change moves the sample by ±1 within 0..255: 255 can only go down and 0 only up.
 - Output is a PNG with the same dimensions, color type and bit depth, carrying only IHDR, IDAT and IEND.
 
 Writers in the reference implementation use HILL costs (high-pass residual with the KB kernel, 3x3 mean of its magnitude, reciprocal with epsilon 0.01, 15x15 mean, symmetric borders), computed per channel on the unmodified cover. Costs are a writer choice and not part of the format.
@@ -151,7 +158,7 @@ Input: the 8-bit Huffman JPEG variants the coefficient codec supports: baseline,
 - Every AC coefficient in every component is an element, **including zero and ±1**. DC coefficients and MCU padding blocks are excluded. Eligibility never depends on a coefficient's value, so changes through zero do not change positions or capacity.
 - Components are concatenated in frame-header order. Within each component, content blocks are row-major over `width_blocks * height_blocks`, excluding MCU padding. Within each block, natural row-major frequency indices `1..64` give the 63 AC elements (not zigzag order). The element number is the component's offset plus `63 * (by * width_blocks + bx) + (k - 1)`.
 - The slot is `(bx + by) & 1` in that component's own block coordinates. Sampling factors do not rescale this checkerboard. Every AC element of a block shares its slot.
-- Parity is `coefficient & 1`, also for negative coefficients (equivalently the absolute value modulo two). A flip changes the signed value by one: at or above 1023 it decrements, at or below -1023 it increments, otherwise a fair coin chooses +1 or -1. Existing values outside that range stay eligible and move toward zero.
+- The symbol is the coefficient modulo 3, taken as non-negative (`-1` is symbol 2). A change moves the coefficient by ±1, never past ±1023: at 1023 or above it can only go down, at -1023 or below only up.
 - Output is JPEG. Missing Huffman symbols trigger the codec's table rebuild. Metadata handling is a writer choice and does not affect element enumeration.
 
 The reference writer strips metadata by default with ScrubPony's default policy, and keeps everything only when asked: JFIF is kept with any embedded thumbnail removed, ICC profile chunks and Adobe APP14 are kept so colors are interpreted as before, and EXIF is replaced by ScrubPony's orientation-only block (one IFD0 entry, no thumbnail) when the orientation is 2 to 8, or dropped when the image is upright. Every other APPn (XMP, MPF, JFXX, maker blocks, Photoshop/IPTC), comments and data after EOI are removed.

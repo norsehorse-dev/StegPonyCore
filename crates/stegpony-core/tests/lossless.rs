@@ -213,9 +213,22 @@ fn too_large_and_too_small() {
     let out = lossless::hide(&cover, (&fits, &hp("b")), None, &mut rng).unwrap();
     assert_eq!(lossless::reveal(&out.png, &[rp("b")]).unwrap(), Some(fits));
 
-    let tiny = fixture("cover_tiny.png");
+    // 24x24 RGB: 864 elements per slot, under the 1,680 a passphrase head alone needs.
+    let tiny = lossless::encode_png(&lossless::Raster {
+        width: 24,
+        height: 24,
+        channels: 3,
+        data: (0..24 * 24 * 3).map(|i| (i * 37 % 251) as u8).collect(),
+    })
+    .unwrap();
+    assert_eq!(lossless::capacity(&tiny).unwrap().max_bucket, None);
     assert!(lossless::hide(&tiny, (&text("x"), &hp("t")), None, &mut rng).is_err());
     assert_eq!(lossless::reveal(&tiny, &[rp("t")]).unwrap(), None);
+    // The 48x48 fixture holds a short message now that heads pack 11 bits into 7 trits.
+    let small = fixture("cover_tiny.png");
+    let short = text("x");
+    let out = lossless::hide(&small, (&short, &hp("t")), None, &mut rng).unwrap();
+    assert_eq!(lossless::reveal(&out.png, &[rp("t")]).unwrap(), Some(short));
 }
 
 #[test]
