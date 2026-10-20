@@ -277,7 +277,7 @@ fn split_okm(okm: &[u8; 36]) -> (Zeroizing<[u8; 32]>, [u8; 4]) {
 
 /// Smallest bucket that holds `framed` bytes of plaintext, at or above `min_bucket`.
 pub fn bucket_for(framed: usize, min_bucket: usize) -> Result<usize> {
-    let need = framed + TAG_LEN;
+    let need = framed.saturating_add(TAG_LEN);
     (min_bucket..NUM_BUCKETS)
         .find(|&k| bucket_size(k) >= need)
         .ok_or_else(|| Error::BadPayload("payload larger than the largest bucket".into()))
@@ -290,6 +290,28 @@ pub(crate) fn seal<R: RngCore + CryptoRng>(
     bucket: usize,
     rng: &mut R,
 ) -> Result<Sealed> {
+    seal_with(payload, key, bucket, rng, true)
+}
+
+/// Seals without deriving a locate key, for carriers that have no positions to find
+/// (text). Saves the passphrase's locate Argon2id run; the returned locate key is zero.
+/// Draws the same random bytes as [`seal`].
+pub(crate) fn seal_unlocated<R: RngCore + CryptoRng>(
+    payload: &Payload,
+    key: &HideKey,
+    bucket: usize,
+    rng: &mut R,
+) -> Result<Sealed> {
+    seal_with(payload, key, bucket, rng, false)
+}
+
+fn seal_with<R: RngCore + CryptoRng>(
+    payload: &Payload,
+    key: &HideKey,
+    bucket: usize,
+    rng: &mut R,
+    with_locate: bool,
+) -> Result<Sealed> {
     let size = bucket_size(bucket);
     let mut plain = Zeroizing::new(Vec::with_capacity(size));
     payload.frame_into(&mut plain)?;
@@ -300,7 +322,11 @@ pub(crate) fn seal<R: RngCore + CryptoRng>(
 
     let (mode, locate, head_prefix, okm) = match key {
         HideKey::Passphrase(pass) => {
-            let locate = passphrase_locate(pass)?;
+            let locate = if with_locate {
+                passphrase_locate(pass)?
+            } else {
+                Zeroizing::new([0u8; 32])
+            };
             let mut salt = [0u8; SALT_LEN];
             rng.try_fill_bytes(&mut salt).map_err(|_| Error::Rng)?;
             let content = argon2(&normalized(pass), &salt)?;
@@ -308,7 +334,11 @@ pub(crate) fn seal<R: RngCore + CryptoRng>(
             (Mode::Passphrase, locate, salt.to_vec(), okm)
         }
         HideKey::Recipient(recipient) => {
-            let locate = public_key_locate(recipient);
+            let locate = if with_locate {
+                public_key_locate(recipient)
+            } else {
+                Zeroizing::new([0u8; 32])
+            };
             let (repr, shared) = ephemeral_exchange(recipient, rng)?;
             let mut salt = repr.to_vec();
             salt.extend_from_slice(recipient.as_bytes());

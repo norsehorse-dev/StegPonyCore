@@ -1,6 +1,6 @@
 # StegPony format, version 1
 
-This is the byte-level specification for what StegPony writes into a carrier. Any implementation that follows it must produce output that the reference implementation in `crates/stegpony-core` reveals, and the other way round. Status: draft (envelope, slot layout, Lossless and native JPEG carriers). Survive-messenger and text carriers get their own sections as they land.
+This is the byte-level specification for what StegPony writes into a carrier. Any implementation that follows it must produce output that the reference implementation in `crates/stegpony-core` reveals, and the other way round. Status: draft (envelope, slot layout, Lossless and native JPEG carriers, text carriers). Survive-messenger gets its own section when it lands.
 
 Design rule: every bit written into a carrier is indistinguishable from random without the secret. There is no magic number, no version field, no length in the clear and no KDF parameters in the clear. Format versions are found by trial, newest first.
 
@@ -167,15 +167,59 @@ The reference writer strips metadata by default with ScrubPony's default policy,
 
 The reference writer uses J-UNIWARD costs. It reconstructs each component's unrounded, unclipped dequantized spatial plane only to measure texture, correlates it with the three Daubechies-8 high-frequency filter pairs (LH, HL, HH) under symmetric borders, and sums the absolute wavelet impact of a unit change in the coefficient, scaled by its quantization step, divided by `abs(residual) + 2^-6`. The residual alignment is the corrected one (Butora et al., arXiv 2305.19776); costs agree with conseal's `JUNIWARD_FIX_OFF_BY_ONE` to float precision. Planes use complete content blocks, including edge-block samples. Costs are computed before any embedding and are a writer choice, not a format rule; floating-point costs need not be bit-exact across platforms, while extraction and coefficient I/O are integer operations. The writer's Low / Medium / High rating counts both slots' bits per nonzero AC coefficient among the elements used, with thresholds from the steganalysis baseline in `tools/steganalysis/`; it is advice to the user, not part of the format.
 
-## 7. Test vectors
+## 7. Text carriers
+
+Text carries the envelope bytes directly: there is no cover to modify, so there are no elements, positions, locate keys or syndrome-trellis code. Every byte written is a head, random fill or ciphertext, so the layout needs no secret.
+
+### 7.1 Stream
+
+```
+HEAD_AREA      = 36
+slot           = head || fill || body          HEAD_AREA + bucket_size(k) bytes
+stream         = slot_a || slot_b              2 * (36 + bucket_size(k)) bytes
+```
+
+`head` is the envelope head of section 3 (20 bytes for a passphrase, 36 for a public key) and `fill` is random bytes up to 36, so the key kind does not change the length. A slot with nothing in it is 36 random bytes followed by a random body (section 3.3). Both slots use the same bucket; which slot gets the payload is a fair coin, as for images. The smallest stream (`k = 0`) is 200 bytes.
+
+A reader finds `k` from the stream length (no other bucket gives the same length), then tries each slot with each key: the first 20 bytes of the slot as a passphrase head or the first 36 as a public-key head, the masked bucket index must equal `k`, and the body opens the AEAD. Section 3's derivations are unchanged, except that the locate key is never derived.
+
+Writers in the reference implementation use buckets up to 16 KiB (`k <= 16`); this is a writer limit, and readers accept any bucket.
+
+### 7.2 Zero-width characters
+
+Symbols are 2 bits, taken from each byte least significant first (four symbols per byte), written as:
+
+| Symbol | Character |
+|---|---|
+| 0 | U+200B ZERO WIDTH SPACE |
+| 1 | U+200C ZERO WIDTH NON-JOINER |
+| 2 | U+200D ZERO WIDTH JOINER |
+| 3 | U+2060 WORD JOINER |
+
+A **carrier position** is the start of the text or the point right after a whitespace character. Whitespace here is exactly Unicode's `White_Space` set: U+0009 to U+000D, U+0020, U+0085, U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000 (not U+200B, U+FEFF or U+001C to U+001F). Reading: walk the text; while at a carrier position, each carrier character is a symbol and the position stays a carrier position; any other character ends it, and a whitespace character starts a new one. Carrier characters anywhere else (such as the joiner inside an emoji sequence) are not symbols. With no symbols the text has no zero-width payload. A symbol count that is not a multiple of 4, or bytes that are not a stream length from 7.1, mean characters were lost or added, unless the whole text also reads as dictionary words (7.3), in which case it is read as words: apps sometimes insert a stray invisible character.
+
+The reference writer first removes carrier characters at carrier positions from the cover, then splits the symbols as evenly as possible over the starts of the cover's words (a non-whitespace character at a carrier position), in order, each run placed just before its word. A cover needs at least one word. A writer may place the symbols any other way that reads back the same.
+
+### 7.3 Dictionary words
+
+The English list is `crates/stegpony-core/src/text/en.txt`: 4096 lowercase ASCII words, one per line, each line ending in `\n`, index = line number from 0. Its SHA-256 is `6e01295be4982adec0341d5484c17f442424bb20998bcd46d5ee1484f1e5c447`. `tools/wordlist/` records how it was chosen.
+
+Bits are taken from the stream bytes least significant first and grouped by 12; a group's value `v = sum(bit_k * 2^k)` is the index of its word. The last group's missing bits are random. A stream of `L` bytes gives `ceil(8L / 12)` words; the smallest stream is 134 words.
+
+Reading: the words are the maximal runs of ASCII letters (A to Z, a to z); every other character (spaces, punctuation, digits, line breaks, any non-ASCII character) separates them. Each word, with ASCII letters lowercased, must be on the list. The word count selects the stream length `L` from 7.1 (no two lengths give the same count), and the first `L` bytes of the bits, in the same order, are the stream.
+
+The reference writer capitalizes the first word of each sentence of 6 to 14 words, ends sentences with a period, sometimes adds a comma, and breaks paragraphs every 3 to 6 sentences. All of this is a writer choice that readers ignore.
+
+## 8. Test vectors
 
 Everything here is fixed for format v1. A change to any of it is a format change.
 
 - `crates/stegpony-core/src/vectors.rs` pins the permutation: the first four outputs with an all-zero key over `T = 1,000,000` are `354941, 379842, 364614, 325392`.
 - `crates/stegpony-core/tests/vectors/envelope_vectors.json`: six envelopes (passphrase text, empty text, an NFC pair, a file in a larger bucket, public-key text, public-key file). Each gives the inputs, every random byte the writer drew (`random_hex`; for public-key cases the last 33 are `eph || tweak`, and one case needed four attempts), and every derived value: locate key, both slots' PRP keys, Argon2id output or shared secret, HKDF output, padded plaintext, head and body. A writer fed the same random bytes must produce the same head and body.
 - `crates/stegpony-core/tests/vectors/jpeg_vectors/`: baseline RGB, progressive RGB, gray and CMYK native JPEG reader vectors, including a decoy and a public-key file. `index.json` lists the keys and expected payloads. The independent checker reads their coefficients through libjpeg (`jpeglib`), rather than the Rust codec.
+- `crates/stegpony-core/tests/vectors/text_vectors.json`: zero-width and dictionary texts (passphrase and public key, a decoy, a file in a larger bucket, a cover with emoji joiners, a recased and repunctuated copy, words with odd separators and a stray invisible character, a cover with unusual whitespace) with the keys to try and the payload each must reveal, and the word list's SHA-256. Like the image vectors, the texts are reveal inputs, not writer outputs.
 - `crates/stegpony-core/tests/vectors/png_vectors/`: Lossless stego images (RGB, gray, RGBA) with their unmodified covers and `index.json`, which lists keys to try on each image and the payload each must reveal, or `null` for nothing. A reader must reveal exactly that. The images are reveal inputs, not writer outputs: a writer with different costs makes different images that are equally valid.
 
 The age keys in the vectors are test keys and are published on purpose.
 
-`tools/check_vectors.py` checks all of it independently of the Rust code: it rebuilds every passphrase envelope, checks public-key envelopes from both the sender's and the reader's side (the reader's through the Elligator 2 map), and reveals every PNG and JPEG vector from scratch. It needs `argon2-cffi`, `cryptography`, `Pillow`, `numpy` and `jpeglib`.
+`tools/check_vectors.py` checks all of it independently of the Rust code: it rebuilds every passphrase envelope, checks public-key envelopes from both the sender's and the reader's side (the reader's through the Elligator 2 map), and reveals every PNG, JPEG and text vector from scratch. It needs `argon2-cffi`, `cryptography`, `Pillow`, `numpy` and `jpeglib`.

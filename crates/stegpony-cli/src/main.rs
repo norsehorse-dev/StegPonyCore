@@ -6,10 +6,11 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use rand_core::OsRng;
 use stegpony_core::jpeg::carrier as jpeg;
 use stegpony_core::lossless::{self, SourceFormat};
+use stegpony_core::text;
 use stegpony_core::{Detectability, HideKey, Identity, Payload, Recipient, RevealKey};
 use zeroize::Zeroizing;
 
-/// Hide encrypted messages and files in images.
+/// Hide encrypted messages and files in images and text.
 #[derive(Parser)]
 #[command(name = "stegpony", version, about)]
 struct Cli {
@@ -43,14 +44,19 @@ enum Cmd {
 enum ImageMode {
     Lossless,
     Jpeg,
+    /// Words from the English list (no cover needed).
+    Words,
+    /// Invisible characters in a cover message (the cover is a UTF-8 text file).
+    ZeroWidth,
 }
 
 #[derive(Args)]
 struct HideArgs {
-    /// Cover image (PNG or JPEG).
+    /// Cover image (PNG or JPEG), or for zero-width mode a UTF-8 text file holding
+    /// the visible message. Not used in words mode.
     #[arg(short, long)]
-    cover: PathBuf,
-    /// Output image (PNG in lossless mode, JPEG in jpeg mode).
+    cover: Option<PathBuf>,
+    /// Output file (PNG in lossless mode, JPEG in jpeg mode, UTF-8 text otherwise).
     #[arg(short, long)]
     output: PathBuf,
     /// Carrier mode.
@@ -90,7 +96,7 @@ struct PayloadArgs {
 
 #[derive(Args)]
 struct RevealArgs {
-    /// Image to look in.
+    /// Image or UTF-8 text file to look in.
     image: PathBuf,
     /// Identity file(s) to try: age identity files or Curve25519 OpenPGP secret keys
     /// (their passphrase is prompted for, or read from STEGPONY_PGP_PASSPHRASE).
@@ -159,7 +165,11 @@ fn hide(a: HideArgs) -> Result<()> {
     if a.decoy_recipient.is_some() && !has_decoy {
         bail!("--decoy-recipient needs --decoy-message or --decoy-file");
     }
-    let cover = fs::read(&a.cover).with_context(|| format!("reading {}", a.cover.display()))?;
+    let cover = match (&a.cover, a.mode) {
+        (_, ImageMode::Words) => Vec::new(),
+        (Some(path), _) => fs::read(path).with_context(|| format!("reading {}", path.display()))?,
+        (None, _) => bail!("--cover is required in this mode"),
+    };
     let payload = load_payload(a.payload.message, a.payload.file)?;
     let key = match a.recipient {
         Some(r) => HideKey::Recipient(parse_recipient(&r)?),
@@ -206,6 +216,28 @@ fn hide(a: HideArgs) -> Result<()> {
             )?;
             (out.jpeg, out.detectability)
         }
+        ImageMode::Words | ImageMode::ZeroWidth => {
+            if a.keep_metadata {
+                bail!("--keep-metadata requires --mode jpeg");
+            }
+            let (mode, cover) = if matches!(a.mode, ImageMode::Words) {
+                (text::TextMode::Dictionary, String::new())
+            } else {
+                let cover = String::from_utf8(cover).context("the cover text is not UTF-8")?;
+                (text::TextMode::ZeroWidth, cover)
+            };
+            let out = text::hide(
+                mode,
+                &cover,
+                (&payload, &key),
+                decoy.as_ref().map(|(p, k)| (p, k)),
+                &mut OsRng,
+            )?;
+            fs::write(&a.output, out.as_bytes())
+                .with_context(|| format!("writing {}", a.output.display()))?;
+            eprintln!("wrote {}", a.output.display());
+            return Ok(());
+        }
     };
     fs::write(&a.output, bytes).with_context(|| format!("writing {}", a.output.display()))?;
     let d = match detectability {
@@ -216,6 +248,7 @@ fn hide(a: HideArgs) -> Result<()> {
     let label = match a.mode {
         ImageMode::Lossless => "provisional detectability",
         ImageMode::Jpeg => "detectability",
+        ImageMode::Words | ImageMode::ZeroWidth => unreachable!(),
     };
     eprintln!("wrote {} ({label}: {d})", a.output.display());
     Ok(())
@@ -258,8 +291,14 @@ fn reveal(a: RevealArgs) -> Result<()> {
     }
     let found = if image.starts_with(&[0xff, 0xd8, 0xff]) {
         jpeg::reveal(&image, &keys)?
-    } else {
+    } else if image.starts_with(b"\x89PNG") {
         lossless::reveal(&image, &keys)?
+    } else {
+        let t = std::str::from_utf8(&image).context("not a PNG, JPEG or UTF-8 text file")?;
+        match text::reveal(t, &keys)? {
+            text::TextFound::Payload(p, _) => Some(p),
+            text::TextFound::Nothing(_) => None,
+        }
     };
     match found {
         None => {
@@ -319,6 +358,12 @@ fn capacity(cover: &Path, mode: ImageMode) -> Result<()> {
     let c = match mode {
         ImageMode::Lossless => lossless::capacity(&bytes)?,
         ImageMode::Jpeg => jpeg::capacity(&bytes)?,
+        ImageMode::Words | ImageMode::ZeroWidth => {
+            bail!(
+                "text output grows with the payload; the largest is {} bytes of text",
+                text::max_text_bytes()
+            )
+        }
     };
     println!("elements per slot: {} / {}", c.elements[0], c.elements[1]);
     match c.max_bucket {

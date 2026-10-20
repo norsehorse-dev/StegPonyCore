@@ -43,6 +43,20 @@ pub enum Error {
     #[error("writing the output image failed: {0}")]
     Output(String),
 
+    /// Pasted text with no hidden characters has a word that is not on the word list,
+    /// so it cannot be StegPony word text. Carries the first such word, as written.
+    #[error("\"{0}\" is not on StegPony's word list")]
+    TextUnknownWord(String),
+
+    /// The text has StegPony's hidden characters or words, but not as many as any
+    /// StegPony text has: some were lost or added on the way.
+    #[error("the hidden text is incomplete: characters or words were lost or added")]
+    TextLength,
+
+    /// Zero-width text needs a visible message with at least one word to sit in.
+    #[error("the cover message needs at least one word")]
+    TextCoverEmpty,
+
     #[error("key derivation failed: {0}")]
     Kdf(String),
 

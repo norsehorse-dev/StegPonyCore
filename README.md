@@ -1,6 +1,6 @@
 # StegPonyCore
 
-The shared Rust core behind StegPony: hide an encrypted message or file inside an ordinary image, and get it back with a passphrase or an age key. Without the secret there is nothing to find: no header, no signature, no fixed layout.
+The shared Rust core behind StegPony: hide an encrypted message or file inside an ordinary image or in text, and get it back with a passphrase or an age key. Without the secret there is nothing to find: no header, no signature, no fixed layout.
 
 Part of the Pony family of privacy tools by NorseHorse. The Android app, and later iOS and desktop, all use this core so that every platform writes and reads the same bytes.
 
@@ -9,7 +9,7 @@ Part of the Pony family of privacy tools by NorseHorse. The Android app, and lat
 - **Headerless envelope.** ChaCha20-Poly1305 under a key from Argon2id (passphrase) or X25519 (public key). Lengths are padded to a fixed bucket table and stored masked. See [FORMAT.md](FORMAT.md).
 - **age keys.** An `age1...` recipient is a StegPony recipient and an `AGE-SECRET-KEY-1...` identity reveals. Ephemeral keys are Elligator 2 encoded with torsion-dirty points, so they look like random bytes too.
 - **OpenPGP keys.** A Curve25519 OpenPGP key (v4 cv25519 or v6 X25519, as made by GnuPG or PGPony) works as a recipient, and its secret key, unlocked with its passphrase, works as an identity. RSA, NIST-curve and post-quantum keys are refused. A secret that stays on a hardware key can still reveal: the app supplies the X25519 step through `KeyAgreement` and the core never sees the secret.
-- **Decoy.** Every image has two slots. Hide a second payload under a second secret, or the second slot gets random filler, and nobody can tell which.
+- **Decoy.** Every image and every text has two slots. Hide a second payload under a second secret, or the second slot gets random filler, and nobody can tell which.
 - **Lossless mode.** PNG covers (8-bit gray, RGB, RGBA) and JPEG covers converted to PNG. Content-adaptive costs (HILL) and ternary syndrome-trellis codes keep changes few and in textured areas.
 
 Native JPEG (Phase B):
@@ -18,16 +18,21 @@ Native JPEG (Phase B):
 
 - **JPEG carrier.** All AC coefficients in every component, including zeros, with J-UNIWARD costs and the same two-slot engine. Native JPEG output, passphrase and public-key payloads, decoys, and metadata stripped by default. Its Low / Medium / High rating comes from a steganalysis baseline on real phone photos; see [tools/steganalysis](tools/steganalysis/README.md).
 
+Text (Phase D):
+
+- **Dictionary words.** The envelope becomes a run of words from a fixed English list of 4096 (12 bits a word), chosen from common words with offensive, alarming and autocorrect-prone ones left out (`tools/wordlist/`). Readers ignore case, punctuation and line breaks. Even a short message is about 134 words, because text has two slots like an image.
+- **Zero-width characters.** The envelope becomes invisible characters at the start of words in a message the user writes, which looks unchanged. Weak by design: many apps strip them and any tool that looks finds them.
+
 App bindings:
 
-- **stegpony-ffi.** The surface the apps call, through [UniFFI](https://mozilla.github.io/uniffi-rs/): a `Cover` that reports capacity and rating per mode and hides, `reveal` over passphrases, identities and hardware keys (a `KeyDevice` the app implements over its OpenPGP card layer), age key generation and parsing, and OpenPGP key import. StegPonyAndroid builds it as a submodule and generates its Kotlin from it:
+- **stegpony-ffi.** The surface the apps call, through [UniFFI](https://mozilla.github.io/uniffi-rs/): a `Cover` that reports capacity and rating per mode and hides, `reveal` over passphrases, identities and hardware keys (a `KeyDevice` the app implements over its OpenPGP card layer), `hide_text`, `reveal_text` and `text_fit` for text, age key generation and parsing, and OpenPGP key import. StegPonyAndroid builds it as a submodule and generates its Kotlin from it:
 
   ```
   cargo build -p stegpony-ffi
   cargo run -p stegpony-ffi --features cli --bin uniffi-bindgen -- generate --library target/debug/libstegpony_ffi.so --language kotlin --out-dir bindings
   ```
 
-Coming next: the Android app (Phase C), text modes (Phase D), and a mode that survives messenger recompression (Phase E).
+Coming next: a mode that survives messenger recompression (Phase E).
 
 ## Command line
 
@@ -42,9 +47,12 @@ cargo build --release
 ./target/release/stegpony hide --mode jpeg -c photo.jpg -o out.jpg -m "meet at noon"
 ./target/release/stegpony capacity --mode jpeg photo.jpg
 ./target/release/stegpony reveal out.jpg
+./target/release/stegpony hide --mode words -o words.txt -m "meet at noon"
+./target/release/stegpony hide --mode zero-width -c visible.txt -o note.txt -m "meet at noon"
+./target/release/stegpony reveal words.txt
 ```
 
-Lossless mode is the default. Reveal tells PNG from JPEG on its own. Native JPEG output strips metadata the way ScrubPony does by default: the ICC color profile stays, EXIF shrinks to the orientation tag alone so the photo still shows the right way up, and everything else (location, timestamps, device details, thumbnails, XMP) goes. `--keep-metadata` keeps all of it.
+Lossless mode is the default. Reveal tells PNG, JPEG and text apart on its own; for zero-width mode, `-c` is a UTF-8 file with the visible message. Native JPEG output strips metadata the way ScrubPony does by default: the ICC color profile stays, EXIF shrinks to the orientation tag alone so the photo still shows the right way up, and everything else (location, timestamps, device details, thumbnails, XMP) goes. `--keep-metadata` keeps all of it.
 
 `-r` also takes a file holding a Curve25519 OpenPGP public key, and `-i` an OpenPGP secret key. Passphrases are prompted for, or read from `STEGPONY_PASSPHRASE`, `STEGPONY_DECOY_PASSPHRASE` and, for OpenPGP secret keys, `STEGPONY_PGP_PASSPHRASE`. Add a decoy with `--decoy-message` or `--decoy-file`, under `--decoy-recipient` or the decoy passphrase.
 

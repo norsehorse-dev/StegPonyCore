@@ -3,7 +3,8 @@
 //!
 //! Phase A covers the envelope (passphrase and age X25519 public keys), the two-slot
 //! layout with decoy, syndrome-trellis embedding, and Lossless (PNG) mode. Phase B adds
-//! the pure-Rust JPEG coefficient codec and native carrier in [`jpeg::carrier`].
+//! the pure-Rust JPEG coefficient codec and native carrier in [`jpeg::carrier`]. Phase D
+//! adds the text carriers in [`text`]: zero-width characters and dictionary words.
 
 pub mod engine;
 pub mod envelope;
@@ -14,6 +15,7 @@ pub mod lossless;
 pub mod pgp;
 pub mod prp;
 pub mod stc;
+pub mod text;
 
 #[cfg(test)]
 mod vectors;

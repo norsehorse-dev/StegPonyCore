@@ -1,0 +1,186 @@
+{
+  "about": "StegPony format v1 text reveal vectors (FORMAT.md 7). Each text must reveal exactly 'expect' with 'keys' (null: nothing). The age keys are published test keys.",
+  "cases": [
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "six at the bridge"
+          },
+          "keys": [
+            {
+              "passphrase": "tuesday"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "passphrase": "wednesday"
+            }
+          ]
+        }
+      ],
+      "mode": "words",
+      "name": "words, passphrase, no decoy",
+      "text": "Sketch tickets completed worry animated, apparent too mouth lake activity wells cliff science. Dependent book chiefs responded feet sponsored reactions pit instantly machines obtain producing. Less millions caring fish according perfect applying.\n\nPerfect worthy saves, until way emotional examined married reasons vocal girl. Bottles seemed cannot, stories courtesy spoken taxi put type sixth charging plastic. Session assume crew archives brand leader exam. Facility delete hilarious why awake receiving posting resource despite plus.\n\nGuide reign resort accuracy spare worn creature quote interests done where simple standard. Agree reward, senior watches gently solution focuses important phase. Bee sand choice hub, remote knows lens. Answer mentions sample sure cross goodbye attending, promises not points publish requires mutual.\n\nEducated butter recording reliable support member acres. Commons helpful pat curve valley working. Houses dining base pulse writer feeding double."
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "six at the bridge"
+          },
+          "keys": [
+            {
+              "passphrase": "tuesday"
+            }
+          ]
+        }
+      ],
+      "mode": "words",
+      "name": "the same words, recased and repunctuated",
+      "text": "SKETCH TICKETS COMPLETED WORRY ANIMATED; APPARENT TOO MOUTH LAKE ACTIVITY WELLS CLIFF SCIENCE -- DEPENDENT BOOK CHIEFS RESPONDED FEET SPONSORED REACTIONS PIT INSTANTLY MACHINES OBTAIN PRODUCING -- LESS MILLIONS CARING FISH ACCORDING PERFECT APPLYING.\r\n 12 PERFECT WORTHY SAVES; UNTIL WAY EMOTIONAL EXAMINED MARRIED REASONS VOCAL GIRL -- BOTTLES SEEMED CANNOT; STORIES COURTESY SPOKEN TAXI PUT TYPE SIXTH CHARGING PLASTIC -- SESSION ASSUME CREW ARCHIVES BRAND LEADER EXAM -- FACILITY DELETE HILARIOUS WHY AWAKE RECEIVING POSTING RESOURCE DESPITE PLUS.\r\n 12 GUIDE REIGN RESORT ACCURACY SPARE WORN CREATURE QUOTE INTERESTS DONE WHERE SIMPLE STANDARD -- AGREE REWARD; SENIOR WATCHES GENTLY SOLUTION FOCUSES IMPORTANT PHASE -- BEE SAND CHOICE HUB; REMOTE KNOWS LENS -- ANSWER MENTIONS SAMPLE SURE CROSS GOODBYE ATTENDING; PROMISES NOT POINTS PUBLISH REQUIRES MUTUAL.\r\n 12 EDUCATED BUTTER RECORDING RELIABLE SUPPORT MEMBER ACRES -- COMMONS HELPFUL PAT CURVE VALLEY WORKING -- HOUSES DINING BASE PULSE WRITER FEEDING DOUBLE."
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "data_hex": "656767730a666c6f75720a6275747465720a73756761720a6c656d6f6e730a656767730a666c6f75720a6275747465720a73756761720a6c656d6f6e730a656767730a666c6f75720a6275747465720a73756761720a6c656d6f6e730a",
+            "kind": "file",
+            "mime": "text/plain",
+            "name": "list.txt"
+          },
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-10CQJUH8Z8EKPC3EUSVDCVLCSX80PG3AACQZJG0PYT47Q6DULRL4QU3R8X4"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-173T02A38CKUSREPTV0Z93Q35VJK5L30RSGYYN5QT6E7LTH73K42QKMU9Z8"
+            }
+          ]
+        }
+      ],
+      "mode": "words",
+      "name": "words, public key, file in a larger bucket",
+      "text": "Salary forever mark from speakers funds retained, college parallel use. Plan harsh receive province fold self conscious division converted deal popular audience. Purely cliff soon, fit alive blog zero hoped.\n\nPenny deck age fathers noble tight lunch boat represent extension closure, chose spots cow. Camera assumed server, ethics, host loads, comments blues, how feeding comeback formerly. Shake store gorgeous dependent brilliant sugar morning settle. Engage sequence snow hard rewards factors backup include tackle hear supposed.\n\nOutfit assume several, text was, sure, basement authors endless span fly expect learning answers. Show setting estate discussed fee insisted treating arrive preserve products. Driving reducing deserves woman poster backing.\n\nPressed newest interface firms writers lens. Hundred prepared become beach you chemistry dining. Painting cast studios grounds beloved pose willing reactions commit rewards. Star perfectly, sells grammar, onto mode changes just.\n\nExploring noise calls happening agency kitchen agency coach belief dedicated tracks oven. Personal sees, practical reduce linked someone. Focuses begins worst survey lap box waiting pale tide patterns scenes essays. Division deep posted gorgeous village writer slightly weekly excuse. Contest upper tend jacket feels stance confirm. Careers signs groups are lips, more, pressure married whenever, map judging worse however lucky.\n\nEngines different interests treaty cheer happy. Trips entries ground resident room orders. Coming salary, intensive emotions, seek handsome, shows skills wrote because circle building. Matching barrier funny values words, cherry occurs impressed girl document public payments. Reveals estimate catching discover wells analysis team regarded sell date installed removal enjoyed nervous. Desert studying, shortly chains entering consumer bag match gas respond.\n\nGrow controls stressed, kit heating shirt backup. Equipment leading shared humble referring major excessive contract euro chairman graphic, lightning certified upper. Courage open treat archives, children there spots express shared highly actually largely.\n\nRacing role, unlike quite cream rocks staying, minutes under, layout, wake paper enhanced perfect. Delivery."
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "real: the key is under the blue pot"
+          },
+          "keys": [
+            {
+              "identity": "AGE-SECRET-KEY-173T02A38CKUSREPTV0Z93Q35VJK5L30RSGYYN5QT6E7LTH73K42QKMU9Z8"
+            }
+          ]
+        },
+        {
+          "expect": {
+            "kind": "text",
+            "text": "decoy: remember to water the plants"
+          },
+          "keys": [
+            {
+              "passphrase": "garden"
+            }
+          ]
+        },
+        {
+          "expect": null,
+          "keys": [
+            {
+              "passphrase": "nope"
+            },
+            {
+              "identity": "AGE-SECRET-KEY-10CQJUH8Z8EKPC3EUSVDCVLCSX80PG3AACQZJG0PYT47Q6DULRL4QU3R8X4"
+            }
+          ]
+        }
+      ],
+      "mode": "zero-width",
+      "name": "zero-width, public key with a passphrase decoy, emoji joiners in the cover",
+      "text": "⁠‌⁠‍‍​‌⁠​​‌‌‌⁠‌⁠⁠‌‍​‌⁠‍​​​‍‍‌‍​‍‍‌​‍‌‍​​​⁠‍⁠‍‍‍‌‌​⁠‍‌‌‌​‍⁠​‌​‍‍‌​‍​‌​‌‌⁠Dinner ​​‌⁠​⁠‌‌⁠‍⁠‍‍⁠‍​​‍⁠‌​⁠‍⁠‌⁠‍​​⁠‌‌‍​‍⁠‍​‍‌⁠​‍‌‍⁠‍​‍‍‍‍‌‌​⁠​​​‍‍⁠​‍‍⁠​​‍⁠‍⁠‍on ​​‌​⁠​⁠‌‌‌⁠‌⁠‍‍‌‌​‍‌‌​‌⁠‍‍‍‌​⁠​⁠‍‌‌‍‌‍‌​‍​‌⁠‌​‍‌⁠‌​‌⁠‌‌‍‍​​‍​‌‍‍​‍​​‌‌⁠‌‌Sunday ⁠​‍‌‍‌​​‍⁠⁠⁠‌‍​‍​⁠‍⁠​‍‍‌​​‌‍‍⁠​​‌⁠​‍⁠​‍​‍‍‍​‍‍⁠​‌‍​‍⁠‍⁠⁠⁠‌‌​​‌‍​⁠‌‌‍‌‌‍‌👨‍👩‍👧 ⁠⁠‌⁠‌‍‍‍​​​‌​​​⁠​​‍​​‍‌‌​‌‍‍​‌⁠​‌‌‌‍‌⁠‍⁠‌‌‍‌​​‍​‍⁠⁠​‌‌​⁠‌⁠⁠‌‌‍‍‍‍‌‌‌‍​‌‌⁠at ‌‌⁠‍⁠‌‍​‌‍⁠‍‍‌​‌​⁠‌‍‌‌‌‍​‍‍⁠‍⁠‌⁠⁠​‌⁠​‌​‌‌‌⁠‌​⁠‍​‌​‌​​‍‍⁠⁠⁠​​⁠‌‍⁠​​​‍‍⁠​⁠​our ‍​⁠⁠​‌⁠⁠‌‌‌‌‌⁠‌‍‍‍⁠​‍⁠‌‍​‍‌⁠‌‍‌‍⁠​​⁠⁠​⁠​⁠​‌⁠​​⁠​⁠​‌‌​‌‍‍‍‌⁠‌​‌‌⁠⁠⁠​‍‌‌‌​‍place?\n‍⁠​⁠‌‌‌‌‍​​‌‌‍‍​⁠​‍​⁠‍⁠‌⁠⁠‌​​‍​⁠‌‍⁠​​⁠⁠⁠‍‌​⁠⁠⁠‍‍‌⁠‌⁠‍⁠‌‌​​​‍‌‍‌⁠⁠‍‍‍‌⁠‍‌Bring ‌⁠‍​‌‍⁠‌⁠‍​⁠​⁠‍⁠⁠⁠‍​⁠‍‌‌⁠‌‍⁠‌⁠‍⁠​⁠‍​⁠⁠‍⁠⁠⁠​‍​‌‌‌‌‌​‌​‍‍​‌‍​‍‍​‍⁠‌⁠‌‍‍⁠​‍‌the ​⁠‍‌⁠​​‌‌‌⁠​‌‌​‌‌‌⁠⁠‍‍​‍​‌‍‍⁠‍‌‍‍‌‍‍​‍⁠​‌⁠‌‌​‌‌‌⁠​⁠‍⁠‍‍‌‍​⁠‌‍‍​​‍‌‍​‌‍‌‌‍good ⁠⁠​​‍​‌‍‍⁠‌‍‍‍​‌‌‌‍‍​‍‌‌‌​‍‍⁠‌‍‌‍‍‌‍​‌‍⁠​​‍​‌​‌‌‌‍​‍​‍​‌‌⁠​‌⁠‍‍⁠‌​​‌‌​‍​‍bread.",
+      "visible": "Dinner on Sunday 👨‍👩‍👧 at our place?\nBring the good bread."
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "six at the bridge"
+          },
+          "keys": [
+            {
+              "passphrase": "tuesday"
+            }
+          ]
+        },
+        {
+          "expect": {
+            "kind": "text",
+            "text": "decoy: remember to water the plants"
+          },
+          "keys": [
+            {
+              "passphrase": "garden"
+            }
+          ]
+        }
+      ],
+      "mode": "zero-width",
+      "name": "zero-width, one-word cover, passphrase and decoy",
+      "text": "‌‍⁠‍⁠⁠​⁠‌‌‍⁠‌​‌‍‌‌‍‌‍‌‌‍‌‌⁠​‍‌‌​​⁠‍​‌⁠​⁠​‍​‌​​​‌‌​⁠‌⁠⁠​‍‌⁠​⁠⁠⁠‍‌​‍‍​⁠‌​‌‍‌​⁠⁠‍​‍⁠⁠​‌​‌⁠‍‍‍⁠⁠⁠⁠‌‌​​⁠‍⁠​⁠‌​‍‍⁠​‌‍​​‍‌⁠​‍‍‌​‍‍​‍‍⁠‌‍⁠​⁠‌⁠⁠​‍‌⁠⁠‌​⁠‍‍​⁠​⁠⁠⁠‍‍‍⁠​⁠‌​‍‌​​‍​​⁠‌‌‍‍‌​‌‍‌​‍‍​‌​‌‌⁠‍‍​​⁠‍⁠​‌‍‌⁠‌‍‌‍⁠‌​‌​⁠​‍‌⁠⁠‌‍‍⁠⁠⁠‍⁠‍‍⁠⁠‍⁠‌​⁠‌⁠⁠⁠‍‍‌‌​​​‍⁠⁠‌‍‌⁠‍⁠⁠‍‍⁠‍‌⁠‌⁠‍‌‍⁠‌‌‌‍⁠‌​​‍‍‍‍​‍⁠‌​​​‍‌‌‍‍​⁠​‍‍‌‌​⁠⁠‌‌‌​‍‍‌‌​‍​​⁠‍⁠‌‍​⁠‍​‍⁠‌​⁠‍⁠‍⁠‍⁠‌⁠‍⁠‌​⁠‍‍‍⁠‌⁠​​‌‌‌​‌‍​⁠⁠​⁠‍⁠​⁠‍⁠⁠‍​​⁠​‍‌‍‍‍​​‌​⁠⁠‍‌​‌‍‌‍‌‌‌​⁠‍​‌‌‌⁠​‍⁠‍⁠​​‌‍‍​​‍​⁠⁠​‌⁠‌​​‌⁠⁠⁠‍​​‌⁠⁠​‌⁠​‍‍​​‍​‌‌‍‌‍​⁠‌‍​‌⁠‌‍​​‍​‌‌⁠​‌‌​‌‌‍​⁠‍‌‍‌​‌⁠‌⁠‌⁠‌​‌‌⁠​⁠​‌​​​​‍⁠‍‌‍‌⁠​​‌‍​​‍‍‌‍⁠⁠‌‍​‍‌‌‌‌‌‍‌‌‌⁠‍​​‌‌​‌⁠⁠​‍⁠‍‍⁠‍‍​‍‍‍‌‍‍​​​‍​‌​‌‌⁠‍​‌⁠​‍​‌⁠‌⁠​‍‍⁠​‌​​​‍‌​​⁠⁠​​⁠​​​‌​‍‍​‌‍​‌​‍​​‌​⁠​​​⁠​⁠​‍⁠⁠⁠​⁠⁠‍‍​‍​‌‍‍‍‌‍‍‌‍⁠‌​⁠‌‍‍‍⁠‌‍​‍‍​​​⁠‌‌​⁠⁠‍‌​⁠‌​​‌​⁠‌‌‌⁠⁠​​‍⁠​‌‌⁠‍‌​​‍‍‌⁠⁠‌‍⁠⁠‌‍​​​⁠​​‍​‌‌​‌⁠‍​‌⁠‍‍‍‌‌‍‌‌‌‌​‍‌​​‌⁠⁠⁠​⁠‍​⁠‌​⁠​​‍​‍⁠​‌​⁠⁠​‍‌‌​⁠‍⁠⁠​‌‌‌‍⁠‍⁠‌‍‍‍⁠⁠​​⁠​⁠‌​​‍⁠‍​‌‍​‍‌⁠‍‌‌‌⁠⁠‌‍⁠ok",
+      "visible": "ok"
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "six at the bridge"
+          },
+          "keys": [
+            {
+              "passphrase": "tuesday"
+            }
+          ]
+        }
+      ],
+      "mode": "words",
+      "name": "words with odd separators and a stray invisible character",
+      "text": "Creation conscious ​median—restored\u001cflightsémeanwhile tell generous banking queen mount franchise city. Moreover strong advocate plants dressed pointing wearing, remains fruit wing ham room rich. Into renewed provider, power gate suddenly extend taste academy.\n\nItself changed artist income aim miss luck defined relative straight accepted. Grants unless order, supposed, nonsense, motivated magic range cents mobility. Instantly won, civil lied oven computing gas equipped, folk dancing pointing naturally.\n\nCalls drag remains burst threw lip. Harder rain advice, look presented highway. Box obtain podcast merely ideas exists log. Coastal customers, forecast demanding, muscles machine exist personnel. Local portion column iconic launch gathering themes per.\n\nError wanted trail orange threw slight, happen wage bears cookies minimum probably. Bags news dispute wall impressed lyrics moon happening. Signs adoption contrary announce phase means faced music beds number input."
+    },
+    {
+      "checks": [
+        {
+          "expect": {
+            "kind": "text",
+            "text": "six at the bridge"
+          },
+          "keys": [
+            {
+              "passphrase": "tuesday"
+            }
+          ]
+        }
+      ],
+      "mode": "zero-width",
+      "name": "zero-width, cover with an ideographic space, a no-break space and a control character",
+      "text": "‍⁠‌‍‌‍⁠‍‍​​‌⁠⁠‌‌‍‌‌‌‍‌‌​‍‌​‍⁠‌​‌‌​‍​​‍​​​​‍‌​⁠‍‍​‍‌⁠‌‍‌‌‌​‍​⁠‌​‍‌​‌⁠‍‍‍‌⁠⁠‍‌‍‌​⁠‌‍⁠‍‌‍⁠‍⁠‌‌‍⁠⁠⁠‌‍⁠⁠​‍‍‍⁠​⁠‍‍‍​‌‍‌​Meeting ‌​‌​⁠‍‌‍‌‍⁠​‍‌⁠‍‌⁠‍⁠​⁠⁠‍⁠⁠⁠​‌‍⁠​‍​⁠‌⁠​​‍‌​‌‌⁠‍⁠⁠‌‌⁠​‌⁠​‌‍⁠​​​‌​‍‌⁠‌‍⁠⁠‌​​⁠‌​‍⁠‌⁠⁠⁠⁠‍​⁠‌‍​‌‍⁠‌‍​​‍​​‍‍‍‍‍‍​‍‍‍​⁠‌‌‍moved　‍‍​⁠⁠⁠​‌‍‌⁠​‍​‍​​​‌⁠⁠‌‌⁠‍‌‌⁠‍⁠⁠⁠⁠⁠‌‌‍‌‌‌‌‍⁠​‍‍​‍​⁠​​‍⁠⁠‍‍‌⁠​‍‍‌‌​‍‌‍‍‌​⁠⁠‍‍​‌⁠‍‌​‍‍⁠⁠​​​⁠​‍‌‌⁠⁠‌⁠⁠​​​‌⁠‍‌‍‍‌​⁠⁠‍​‌to ‌⁠‍⁠‍​‍‌​⁠⁠​‍​‌⁠⁠⁠‌‌⁠‌‌⁠‍⁠⁠​⁠‍⁠​‍​‍​‍‌‍⁠⁠​⁠​‍​‍​​​‍​‍⁠‍‌​​⁠‌‌‌‍‌‌​‍​‌​‌‌⁠‌⁠‌⁠‍⁠‍​⁠​​​⁠‌‌‌‌⁠​​⁠‍⁠‌⁠​‍‍‌‍‍‌‌‌​⁠‌​‌‍‌‍Friday, ​‍⁠​⁠‌‌​‍‍​​⁠‌‍‍‍‍​⁠‌‌‍​‍​​‌‍⁠‍⁠​⁠​​​​⁠⁠‍​‍‌​​‌⁠​⁠⁠‌‍​⁠​‍‌‍‌‌⁠​​‌‍‍​⁠‍​⁠‌‌​‌‍​​‌‍⁠⁠‌‌‍⁠​⁠⁠⁠⁠⁠‍‌‍​‍‍⁠‌⁠‌​‌​‍⁠‌⁠⁠‌⁠​same ‌​⁠​⁠​‍‍‌​‍⁠⁠​‌‌‍​​⁠‌‍‍​​‌‌‌‍‍​‌‍‍⁠⁠​‌⁠‍‌⁠​‍​​‍‌​​‌‍​‌⁠​​‍‍⁠​‍‍​​⁠‌​‍⁠‌⁠‌⁠⁠‍⁠⁠‍​‌‌‍​⁠‌‌​​‌‌​⁠​‍‌⁠‌‌​‍‍⁠‍⁠​‍​‍⁠​‌​‍room.\u001cSee ‍‍⁠‍‍⁠⁠‍‍‍​⁠‍‍‍‍​‌⁠⁠‌⁠​​‍⁠⁠⁠⁠⁠‌⁠‌‍⁠​‍‌‌‌⁠⁠​‌⁠​​‌‌‍⁠‌‍⁠‌‍‌​⁠‍‍​‌‍​​​‍​‍​‍⁠‍‌‌‌‍​⁠‍​‍‌‌‍‍‍‍‌​‌‌‍‌‍⁠‌​‍‍⁠‍‍‍​‌​‌​‍‍⁠‌​you",
+      "visible": "Meeting moved　to Friday, same room.\u001cSee you"
+    }
+  ],
+  "wordlist_sha256": "6e01295be4982adec0341d5484c17f442424bb20998bcd46d5ee1484f1e5c447"
+}

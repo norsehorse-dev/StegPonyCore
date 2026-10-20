@@ -14,6 +14,8 @@ What it checks:
                          (3.2, 4.1).
   png_vectors/           every image is revealed from scratch with the listed keys
                          (4, 5) and must give exactly the expected payload, or nothing.
+  text_vectors.json      the word list's hash, then every text is read back to its
+                         stream (7.2, 7.3) and revealed (7.1).
 """
 import hashlib
 import hmac
@@ -442,6 +444,110 @@ def reveal(img, keys):
     return None
 
 
+# ---- text carriers (FORMAT.md 7) ----------------------------------------------------
+
+HEAD_AREA = 36
+ZW = {"\u200b": 0, "\u200c": 1, "\u200d": 2, "\u2060": 3}
+
+
+def stream_len(k):
+    return 2 * (HEAD_AREA + bucket_size(k))
+
+
+# Unicode White_Space (FORMAT.md 7.2); str.isspace() is not the same set.
+WHITE_SPACE = set(chr(c) for c in [*range(0x09, 0x0E), 0x20, 0x85, 0xA0, 0x1680, *range(0x2000, 0x200B),
+                                    0x2028, 0x2029, 0x202F, 0x205F, 0x3000])
+
+
+def zero_width_stream(text):
+    syms, at = [], True
+    for c in text:
+        if at and c in ZW:
+            syms.append(ZW[c])
+            continue
+        at = c in WHITE_SPACE
+    if not syms:
+        return None
+    if len(syms) % 4:
+        return b""
+    return bytes(q[0] | q[1] << 2 | q[2] << 4 | q[3] << 6 for q in zip(*[iter(syms)] * 4))
+
+
+def words_stream(text, index):
+    words, cur = [], []
+    for c in text + " ":
+        if ("a" <= c <= "z") or ("A" <= c <= "Z"):
+            cur.append(c)
+        elif cur:
+            words.append("".join(cur).lower())
+            cur = []
+    idx = [index[w] for w in words]  # KeyError: not StegPony words
+    lens = [stream_len(k) for k in range(NUM_BUCKETS) if -(-8 * stream_len(k) // 12) == len(idx)]
+    if not lens:
+        return b""
+    v = sum(i << (12 * n) for n, i in enumerate(idx))
+    return v.to_bytes((12 * len(idx) + 7) // 8, "little")[: lens[0]]
+
+
+def reveal_stream(stream, keys):
+    ks = [k for k in range(NUM_BUCKETS) if stream_len(k) == len(stream)]
+    if not ks:
+        return None
+    k = ks[0]
+    size = HEAD_AREA + bucket_size(k)
+    for slot in (stream[:size], stream[size:]):
+        area, body = slot[:HEAD_AREA], slot[HEAD_AREA:]
+        for key in keys:
+            if "passphrase" in key:
+                head = area[:20]
+                okm = hkdf(None, argon2id(nfc(key["passphrase"]), head[:16]), INFO_BODY, 36)
+            else:
+                head = area
+                identity = bech32_decode(key["identity"], "age-secret-key-")
+                recipient = x25519_base(identity)
+                try:
+                    shared = x25519(identity, elligator2_u(head[:32]))
+                except ValueError:
+                    continue
+                okm = hkdf(head[:32] + recipient, shared, INFO_BODY, 36)
+            if struct.unpack("<I", bytes(a ^ b for a, b in zip(head[-4:], okm[32:])))[0] != k:
+                continue
+            try:
+                return parse(ChaCha20Poly1305(okm[:32]).decrypt(NONCE, body, None))
+            except InvalidTag:
+                continue
+    return None
+
+
+def check_text(root, report):
+    here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, "..", "crates", "stegpony-core", "src", "text", "en.txt"), "rb") as f:
+        raw = f.read()
+    with open(os.path.join(root, "text_vectors.json"), encoding="utf-8") as f:
+        doc = json.load(f)
+    words = raw.decode("ascii").split("\n")[:-1]
+    report("word list: 4096 words, SHA-256 matches",
+           len(words) == 4096 and hashlib.sha256(raw).hexdigest() == doc["wordlist_sha256"])
+    index = {w: i for i, w in enumerate(words)}
+    for case in doc["cases"]:
+        text = case["text"]
+        # FORMAT.md 7.2: hidden characters that make a whole stream win; otherwise
+        # the text is read as words.
+        zw = zero_width_stream(text)
+        if zw and any(stream_len(k) == len(zw) for k in range(NUM_BUCKETS)):
+            mode, stream = "zero-width", zw
+        else:
+            mode, stream = "words", words_stream(text, index)
+        report(f"{case['name']}: read as {case['mode']}", mode == case["mode"])
+        if mode == "zero-width":
+            visible = "".join(c for c in text if c not in ZW)
+            report(f"{case['name']}: visible text unchanged",
+                   visible == "".join(c for c in case["visible"] if c not in ZW))
+        for chk in case["checks"]:
+            report(f"{case['name']}: -> {'nothing' if chk['expect'] is None else chk['expect']['kind']}",
+                   reveal_stream(stream, chk["keys"]) == chk["expect"])
+
+
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else "crates/stegpony-core/tests/vectors"
     failures, passes = [], 0
@@ -457,6 +563,8 @@ def main():
     with open(os.path.join(root, "envelope_vectors.json"), encoding="utf-8") as f:
         for case in json.load(f)["cases"]:
             check_envelope(case, report)
+
+    check_text(root, report)
 
     png_dir = os.path.join(root, "png_vectors")
     with open(os.path.join(png_dir, "index.json"), encoding="utf-8") as f:
