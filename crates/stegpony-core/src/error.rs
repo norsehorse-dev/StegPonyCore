@@ -21,6 +21,16 @@ pub enum Error {
     #[error("key not usable: {0}")]
     BadKey(String),
 
+    /// The passphrase does not unlock this key. Also the answer for an empty passphrase
+    /// on a protected key, so callers can try without one first.
+    #[error("wrong passphrase for this key")]
+    WrongPassphrase,
+
+    /// The key file holds the public half of the encryption key but not its secret: a
+    /// GnuPG stub, as left by a key moved to a hardware token or a partial export.
+    #[error("this key's encryption secret is not in the file (it may live on a hardware key, or the export left it out)")]
+    SecretNotInFile,
+
     #[error("the recipient key is unusable (low-order point)")]
     WeakRecipient,
 

@@ -353,6 +353,11 @@ fn rating_counts_both_slots_per_nonzero_ac() {
     assert_eq!(carrier::rating(&busy, 0), Low);
     assert_eq!(carrier::rating(&busy, 2), Medium);
     assert_eq!(carrier::rating(&busy, 4), High);
+    let all = carrier::ratings(&busy);
+    assert_eq!(all.len(), stegpony_core::envelope::NUM_BUCKETS);
+    for (k, r) in all.iter().enumerate() {
+        assert_eq!(*r, carrier::rating(&busy, k), "bucket {k}");
+    }
     let mut flat = Jpeg::parse(&fixture("gray.jpg")).unwrap();
     for (i, v) in flat.components[0].coefs.iter_mut().enumerate() {
         if i % 64 != 0 {

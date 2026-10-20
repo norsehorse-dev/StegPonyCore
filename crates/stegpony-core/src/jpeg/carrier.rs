@@ -3,7 +3,7 @@
 //! symbol is its coefficient modulo 3.
 use super::{costs, Jpeg};
 use crate::engine::{self, Capacity, Cover, Detectability};
-use crate::envelope::{bucket_for, bucket_size, HideKey, Payload, RevealKey};
+use crate::envelope::{bucket_for, bucket_size, HideKey, Payload, RevealKey, NUM_BUCKETS};
 use crate::error::Result;
 use rand_core::{CryptoRng, RngCore};
 
@@ -148,10 +148,8 @@ pub struct Hidden {
 pub const LOW_MAX_BPNZAC: f64 = 0.18;
 pub const MEDIUM_MAX_BPNZAC: f64 = 0.38;
 
-/// How detectable a payload of `bucket` would be in this cover: both slots' bits
-/// (the second slot is always filled) per nonzero AC coefficient among the elements
-/// the engine uses.
-pub fn rating(cover: &JpegCover, bucket: usize) -> Detectability {
+/// Nonzero AC coefficients among the elements the engine uses.
+fn nonzero_used(cover: &JpegCover) -> f64 {
     let counts = cover.slot_counts();
     let total = counts[0] + counts[1];
     let used: u64 = counts
@@ -174,7 +172,10 @@ pub fn rating(cover: &JpegCover, bucket: usize) -> Detectability {
         .sum();
     // Slot positions are a keyed random sample, so the used elements carry the same
     // share of nonzero coefficients as the whole cover.
-    let nonzero_used = nonzero as f64 * used as f64 / total.max(1) as f64;
+    nonzero as f64 * used as f64 / total.max(1) as f64
+}
+
+fn rate(nonzero_used: f64, bucket: usize) -> Detectability {
     let bits = (2 * bucket_size(bucket) * 8) as f64;
     let bpnzac = bits / nonzero_used.max(1.0);
     if bpnzac <= LOW_MAX_BPNZAC {
@@ -184,6 +185,19 @@ pub fn rating(cover: &JpegCover, bucket: usize) -> Detectability {
     } else {
         Detectability::High
     }
+}
+
+/// How detectable a payload of `bucket` would be in this cover: both slots' bits
+/// (the second slot is always filled) per nonzero AC coefficient among the elements
+/// the engine uses.
+pub fn rating(cover: &JpegCover, bucket: usize) -> Detectability {
+    rate(nonzero_used(cover), bucket)
+}
+
+/// [`rating`] for every bucket, indexed by bucket, counting the coefficients once.
+pub fn ratings(cover: &JpegCover) -> Vec<Detectability> {
+    let n = nonzero_used(cover);
+    (0..NUM_BUCKETS).map(|k| rate(n, k)).collect()
 }
 
 /// The rating a payload of `framed_len` bytes would get in this cover, for a live

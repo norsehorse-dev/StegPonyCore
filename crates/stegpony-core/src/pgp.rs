@@ -161,9 +161,9 @@ fn unlock_error(key: &pgp::packet::SecretSubkey) -> Error {
         SecretParams::Plain(_) => false,
     };
     if stub {
-        bad("this key's encryption secret is not in the file (it may live on a hardware key, or the export left it out)")
+        Error::SecretNotInFile
     } else {
-        bad("wrong passphrase for this key")
+        Error::WrongPassphrase
     }
 }
 

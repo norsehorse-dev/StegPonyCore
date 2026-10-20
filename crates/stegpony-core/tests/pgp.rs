@@ -47,7 +47,9 @@ fn gnupg_v4_secret_key_unlocks_to_the_matching_identity() {
     assert_eq!(info, public);
     assert_eq!(id.recipient(), public.recipient);
     let wrong = identity_from_pgp(&fixture("pgp/v4_cv25519_secret.asc"), "nope").unwrap_err();
-    assert!(message(wrong).contains("wrong passphrase"));
+    assert!(matches!(wrong, Error::WrongPassphrase));
+    let empty = identity_from_pgp(&fixture("pgp/v4_cv25519_secret.asc"), "").unwrap_err();
+    assert!(matches!(empty, Error::WrongPassphrase));
 }
 
 #[test]
@@ -56,7 +58,7 @@ fn missing_secret_is_reported_as_such() {
     // writes a gnu-dummy stub in its place, the same shape as a key moved to a
     // hardware token.
     let e = identity_from_pgp(&fixture("pgp/v4_cv25519_stub_secret.asc"), PASS).unwrap_err();
-    assert!(message(e).contains("not in the file"));
+    assert!(matches!(e, Error::SecretNotInFile));
     // The public half still works as a recipient.
     let r = recipient_from_pgp(&fixture("pgp/v4_cv25519_stub_secret.asc")).unwrap();
     assert_eq!(r.subkey_fingerprint, ENCRYPTION_SUBKEY);

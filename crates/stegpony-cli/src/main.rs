@@ -235,7 +235,7 @@ fn reveal(a: RevealArgs) -> Result<()> {
         // An unprotected key opens without asking.
         let (id, info) = match stegpony_core::pgp::identity_from_pgp(&bytes, "") {
             Ok(found) => found,
-            Err(_) => {
+            Err(stegpony_core::Error::WrongPassphrase) => {
                 let pass = passphrase(
                     "STEGPONY_PGP_PASSPHRASE",
                     &format!("Passphrase for {}", path.display()),
@@ -244,6 +244,7 @@ fn reveal(a: RevealArgs) -> Result<()> {
                 stegpony_core::pgp::identity_from_pgp(&bytes, &pass)
                     .with_context(|| format!("reading {}", path.display()))?
             }
+            Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
         };
         eprintln!("using OpenPGP subkey {}", info.subkey_fingerprint);
         keys.push(RevealKey::Identity(id));
