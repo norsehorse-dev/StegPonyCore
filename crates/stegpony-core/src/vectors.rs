@@ -314,6 +314,7 @@ mod tests {
         match k {
             RevealKey::Passphrase(p) => json!({ "passphrase": p.as_str() }),
             RevealKey::Identity(id) => json!({ "identity": id.to_age_string() }),
+            RevealKey::External(_) => unreachable!("vectors use keys written out in full"),
         }
     }
 

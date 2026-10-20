@@ -8,7 +8,7 @@ Part of the Pony family of privacy tools by NorseHorse. The Android app, and lat
 
 - **Headerless envelope.** ChaCha20-Poly1305 under a key from Argon2id (passphrase) or X25519 (public key). Lengths are padded to a fixed bucket table and stored masked. See [FORMAT.md](FORMAT.md).
 - **age keys.** An `age1...` recipient is a StegPony recipient and an `AGE-SECRET-KEY-1...` identity reveals. Ephemeral keys are Elligator 2 encoded with torsion-dirty points, so they look like random bytes too.
-- **OpenPGP keys.** A Curve25519 OpenPGP key (v4 cv25519 or v6 X25519, as made by GnuPG or PGPony) works as a recipient, and its secret key, unlocked with its passphrase, works as an identity. RSA, NIST-curve and post-quantum keys are refused.
+- **OpenPGP keys.** A Curve25519 OpenPGP key (v4 cv25519 or v6 X25519, as made by GnuPG or PGPony) works as a recipient, and its secret key, unlocked with its passphrase, works as an identity. RSA, NIST-curve and post-quantum keys are refused. A secret that stays on a hardware key can still reveal: the app supplies the X25519 step through `KeyAgreement` and the core never sees the secret.
 - **Decoy.** Every image has two slots. Hide a second payload under a second secret, or the second slot gets random filler, and nobody can tell which.
 - **Lossless mode.** PNG covers (8-bit gray, RGB, RGBA) and JPEG covers converted to PNG. Content-adaptive costs (HILL) and ternary syndrome-trellis codes keep changes few and in textured areas.
 

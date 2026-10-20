@@ -19,7 +19,7 @@ pub mod stc;
 mod vectors;
 
 pub use engine::{Capacity, Detectability};
-pub use envelope::{HideKey, Payload, RevealKey};
+pub use envelope::{HideKey, KeyAgreement, Payload, RevealKey};
 pub use error::{Error, Result};
 pub use keys::{Identity, Recipient};
 

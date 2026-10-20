@@ -38,6 +38,12 @@ pub enum Error {
 
     #[error("random number generator failure")]
     Rng,
+
+    /// A key held elsewhere (for example on a hardware key) could not do its part:
+    /// the device was removed, the PIN was refused or cancelled, or it reported an
+    /// error. Unlike a failed reveal, this is reported, since nothing was tried.
+    #[error("the key device failed: {0}")]
+    KeyDevice(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

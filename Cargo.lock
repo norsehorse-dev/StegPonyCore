@@ -2512,6 +2512,7 @@ dependencies = [
  "subtle",
  "thiserror 2.0.21",
  "unicode-normalization",
+ "x25519-dalek",
  "zeroize",
  "zune-jpeg",
 ]

@@ -160,11 +160,27 @@ pub enum HideKey {
     Recipient(Recipient),
 }
 
+/// An X25519 secret held outside the core, such as the decryption key on an OpenPGP
+/// card. The core never sees the secret; it asks for one key agreement per slot it
+/// tries (so at most two per reveal for each such key).
+pub trait KeyAgreement: Send + Sync {
+    /// The public key whose secret the holder has.
+    fn recipient(&self) -> Recipient;
+
+    /// Returns X25519(secret, point): `point` is a Montgomery u-coordinate in the usual
+    /// 32-byte little-endian encoding. It may carry a low-order component; standard
+    /// X25519 with a clamped scalar removes it, as the format relies on. An error
+    /// aborts the reveal and is passed back to the caller as [`Error::KeyDevice`].
+    fn agree(&self, point: &[u8; 32]) -> std::result::Result<[u8; 32], String>;
+}
+
 /// A secret to try when revealing.
 #[derive(Clone)]
 pub enum RevealKey {
     Passphrase(Zeroizing<String>),
     Identity(Identity),
+    /// A key whose secret lives elsewhere; see [`KeyAgreement`].
+    External(std::sync::Arc<dyn KeyAgreement>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -375,6 +391,11 @@ pub(crate) fn locators(keys: &[RevealKey]) -> Result<Vec<Locator<'_>>> {
                 locate: public_key_locate(&id.recipient()),
                 key,
             }),
+            RevealKey::External(ext) => out.push(Locator {
+                mode: Mode::PublicKey,
+                locate: public_key_locate(&ext.recipient()),
+                key,
+            }),
         }
     }
     Ok(out)
@@ -391,7 +412,7 @@ pub(crate) fn open_head(key: &RevealKey, head: &[u8]) -> Result<Option<OpenedHea
             let content = argon2(&normalized(pass), &head[..SALT_LEN])?;
             body_okm(content.as_ref(), None)
         }
-        RevealKey::Identity(id) => {
+        RevealKey::Identity(_) | RevealKey::External(_) => {
             if head.len() != PUBLIC_KEY_HEAD_LEN {
                 return Ok(None);
             }
@@ -400,12 +421,22 @@ pub(crate) fn open_head(key: &RevealKey, head: &[u8]) -> Result<Option<OpenedHea
                 Some(p) => p,
                 None => return Ok(None),
             };
-            let shared = Zeroizing::new(point.mul_clamped(id.secret_bytes()).to_bytes());
+            let (shared, recipient) = match key {
+                RevealKey::Identity(id) => (
+                    Zeroizing::new(point.mul_clamped(id.secret_bytes()).to_bytes()),
+                    id.recipient(),
+                ),
+                RevealKey::External(ext) => (
+                    Zeroizing::new(ext.agree(&point.to_bytes()).map_err(Error::KeyDevice)?),
+                    ext.recipient(),
+                ),
+                RevealKey::Passphrase(_) => unreachable!(),
+            };
             if bool::from(shared.ct_eq(&[0u8; 32])) {
                 return Ok(None);
             }
             let mut salt = repr.to_vec();
-            salt.extend_from_slice(id.recipient().as_bytes());
+            salt.extend_from_slice(recipient.as_bytes());
             body_okm(shared.as_ref(), Some(&salt))
         }
     };
