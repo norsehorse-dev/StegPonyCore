@@ -29,18 +29,18 @@ uniffi::setup_scaffolding!();
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum StegError {
     /// The image could not be read.
-    #[error("{message}")]
-    BadCover { message: String },
+    #[error("{detail}")]
+    BadCover { detail: String },
     /// The image is readable but this kind can't be used (or not in this mode).
-    #[error("{message}")]
-    UnsupportedCover { message: String },
+    #[error("{detail}")]
+    UnsupportedCover { detail: String },
     #[error("the cover is too small for anything to be hidden in it")]
     CoverTooSmall,
     #[error("the message does not fit in this cover")]
     PayloadTooLarge,
-    /// A key string or key file could not be used; the message says why.
-    #[error("{message}")]
-    BadKey { message: String },
+    /// A key string or key file could not be used; `detail` says why.
+    #[error("{detail}")]
+    BadKey { detail: String },
     /// The passphrase does not unlock this OpenPGP key (also the answer for an empty
     /// passphrase on a protected key).
     #[error("wrong passphrase for this key")]
@@ -55,28 +55,28 @@ pub enum StegError {
     #[error("the hardware key operation was cancelled")]
     DeviceCancelled,
     /// A hardware key failed: removed, PIN refused, or an error from the card.
-    #[error("{message}")]
-    KeyDevice { message: String },
+    #[error("{detail}")]
+    KeyDevice { detail: String },
     /// Anything else (a payload too odd to frame, an output encoding failure).
-    #[error("{message}")]
-    Failed { message: String },
+    #[error("{detail}")]
+    Failed { detail: String },
 }
 
 impl From<stegpony_core::Error> for StegError {
     fn from(e: stegpony_core::Error) -> Self {
         use stegpony_core::Error as E;
-        let message = e.to_string();
+        let detail = e.to_string();
         match e {
-            E::BadCover(_) => StegError::BadCover { message },
-            E::UnsupportedCover(_) => StegError::UnsupportedCover { message },
+            E::BadCover(_) => StegError::BadCover { detail },
+            E::UnsupportedCover(_) => StegError::UnsupportedCover { detail },
             E::CoverTooSmall => StegError::CoverTooSmall,
             E::PayloadTooLarge { .. } => StegError::PayloadTooLarge,
-            E::BadKey(_) => StegError::BadKey { message },
+            E::BadKey(_) => StegError::BadKey { detail },
             E::WrongPassphrase => StegError::WrongPassphrase,
             E::SecretNotInFile => StegError::SecretNotInFile,
             E::WeakRecipient => StegError::WeakRecipient,
-            E::KeyDevice(m) => StegError::KeyDevice { message: m },
-            _ => StegError::Failed { message },
+            E::KeyDevice(m) => StegError::KeyDevice { detail: m },
+            _ => StegError::Failed { detail },
         }
     }
 }
@@ -160,7 +160,7 @@ impl HideSecret {
                 let p = Zeroizing::new(passphrase);
                 if p.is_empty() {
                     return Err(StegError::BadKey {
-                        message: "the passphrase is empty".into(),
+                        detail: "the passphrase is empty".into(),
                     });
                 }
                 HideKey::Passphrase(p)
@@ -296,7 +296,7 @@ impl Cover {
     fn require_jpeg(&self) -> Result<()> {
         if self.format != ImageFormat::Jpeg {
             return Err(StegError::UnsupportedCover {
-                message: "JPEG mode needs a JPEG cover; use Lossless for a PNG".into(),
+                detail: "JPEG mode needs a JPEG cover; use Lossless for a PNG".into(),
             });
         }
         Ok(())
@@ -314,7 +314,7 @@ impl Cover {
             Some(SourceFormat::Jpeg) => ImageFormat::Jpeg,
             None => {
                 return Err(StegError::UnsupportedCover {
-                    message: "not a PNG or JPEG image".into(),
+                    detail: "not a PNG or JPEG image".into(),
                 })
             }
         };
@@ -513,7 +513,7 @@ pub fn reveal(
         Some(SourceFormat::Jpeg) => carrier::reveal(&image, &keys),
         None => {
             return Err(StegError::UnsupportedCover {
-                message: "not a PNG or JPEG image".into(),
+                detail: "not a PNG or JPEG image".into(),
             })
         }
     };
@@ -580,7 +580,7 @@ pub fn recipient_from_x25519(public_key: Vec<u8>) -> Result<String> {
         other => other,
     };
     let bytes: [u8; 32] = raw.try_into().map_err(|_| StegError::BadKey {
-        message: "an X25519 public key is 32 bytes".into(),
+        detail: "an X25519 public key is 32 bytes".into(),
     })?;
     Ok(Recipient::from_bytes(bytes).to_age_string())
 }

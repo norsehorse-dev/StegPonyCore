@@ -189,7 +189,7 @@ fn jpeg_hide_for_a_card_and_reveal_with_it() {
     });
     let devices: Vec<Arc<dyn KeyDevice>> = vec![removed];
     match reveal(out.image, vec![], devices) {
-        Err(StegError::KeyDevice { message }) => assert_eq!(message, "tag lost"),
+        Err(StegError::KeyDevice { detail }) => assert_eq!(detail, "tag lost"),
         other => panic!("{other:?}"),
     }
 }
