@@ -107,7 +107,8 @@ impl core::fmt::Debug for Identity {
 }
 
 fn decode_bech32(s: &str, expected_hrp: &str) -> Result<[u8; 32]> {
-    let checked = CheckedHrpstring::new::<Bech32>(s).map_err(|e| Error::BadKey(e.to_string()))?;
+    let checked = CheckedHrpstring::new::<Bech32>(s)
+        .map_err(|e| Error::BadKey(format!("not an age key: {e}")))?;
     let hrp = checked.hrp().to_lowercase();
     if hrp != expected_hrp {
         return Err(Error::BadKey(format!(

@@ -84,6 +84,8 @@ The representative follows the `Randomized` variant of the Tor Project's `curve2
 
 Without the torsion component every decoded point would lie in the prime-order subgroup, which random strings do only one time in eight. Without the tweak the top two bits would always be zero.
 
+A Curve25519 OpenPGP encryption subkey is the same kind of key and may be used in place of an age key; the image does not record which kind was used. The recipient is the subkey's 32-byte X25519 public value (for a v4 ECDH key on Curve25519 the MPI is `0x40` followed by those 32 bytes; for a v6 X25519 key it is the key material itself). The identity is the X25519 secret: for v4 ECDH keys the MPI holds it byte-reversed and must be reversed back, for v6 X25519 keys it is stored as is. StegPony's derivations above are its own, so reusing an OpenPGP key here does not interact with OpenPGP's ECDH key derivation.
+
 ### 3.3 Filler
 
 A slot with nothing in it carries a filler: a random 32-byte locate key, a random 20-byte head, and a random body the size of the bucket in use. It is written exactly like a passphrase envelope and is indistinguishable from one.

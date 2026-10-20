@@ -18,7 +18,7 @@ pub enum Error {
     )]
     PayloadTooLarge { needed: usize, available: usize },
 
-    #[error("not a valid age recipient or identity: {0}")]
+    #[error("key not usable: {0}")]
     BadKey(String),
 
     #[error("the recipient key is unusable (low-order point)")]

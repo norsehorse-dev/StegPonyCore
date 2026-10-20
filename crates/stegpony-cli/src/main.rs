@@ -61,7 +61,8 @@ struct HideArgs {
     keep_metadata: bool,
     #[command(flatten)]
     payload: PayloadArgs,
-    /// Hide for this recipient (age1...) instead of a passphrase.
+    /// Hide for this recipient instead of a passphrase: an age1... string, or a file
+    /// holding a Curve25519 OpenPGP key.
     #[arg(short, long)]
     recipient: Option<String>,
     /// Decoy text, revealed by the decoy secret.
@@ -70,7 +71,8 @@ struct HideArgs {
     /// Decoy file, revealed by the decoy secret.
     #[arg(long)]
     decoy_file: Option<PathBuf>,
-    /// Hide the decoy for this recipient instead of a decoy passphrase.
+    /// Hide the decoy for this recipient (age1... or OpenPGP key file) instead of a
+    /// decoy passphrase.
     #[arg(long)]
     decoy_recipient: Option<String>,
 }
@@ -90,7 +92,8 @@ struct PayloadArgs {
 struct RevealArgs {
     /// Image to look in.
     image: PathBuf,
-    /// age identity file(s) to try.
+    /// Identity file(s) to try: age identity files or Curve25519 OpenPGP secret keys
+    /// (their passphrase is prompted for, or read from STEGPONY_PGP_PASSPHRASE).
     #[arg(short, long)]
     identity: Vec<PathBuf>,
     /// Also ask for a passphrase (the default when no identity is given).
@@ -159,13 +162,13 @@ fn hide(a: HideArgs) -> Result<()> {
     let cover = fs::read(&a.cover).with_context(|| format!("reading {}", a.cover.display()))?;
     let payload = load_payload(a.payload.message, a.payload.file)?;
     let key = match a.recipient {
-        Some(r) => HideKey::Recipient(Recipient::parse(&r)?),
+        Some(r) => HideKey::Recipient(parse_recipient(&r)?),
         None => HideKey::Passphrase(passphrase("STEGPONY_PASSPHRASE", "Passphrase", true)?),
     };
     let decoy = if has_decoy {
         let p = load_payload(a.decoy_message, a.decoy_file)?;
         let k = match a.decoy_recipient {
-            Some(r) => HideKey::Recipient(Recipient::parse(&r)?),
+            Some(r) => HideKey::Recipient(parse_recipient(&r)?),
             None => HideKey::Passphrase(passphrase(
                 "STEGPONY_DECOY_PASSPHRASE",
                 "Decoy passphrase",
@@ -222,12 +225,28 @@ fn reveal(a: RevealArgs) -> Result<()> {
     let image = fs::read(&a.image).with_context(|| format!("reading {}", a.image.display()))?;
     let mut keys = Vec::new();
     for path in &a.identity {
-        let s = Zeroizing::new(
-            fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?,
-        );
-        for id in Identity::parse_file(&s)? {
-            keys.push(RevealKey::Identity(id));
+        let bytes =
+            Zeroizing::new(fs::read(path).with_context(|| format!("reading {}", path.display()))?);
+        let text = std::str::from_utf8(&bytes).ok();
+        if let Some(Ok(ids)) = text.map(Identity::parse_file) {
+            keys.extend(ids.into_iter().map(RevealKey::Identity));
+            continue;
         }
+        // An unprotected key opens without asking.
+        let (id, info) = match stegpony_core::pgp::identity_from_pgp(&bytes, "") {
+            Ok(found) => found,
+            Err(_) => {
+                let pass = passphrase(
+                    "STEGPONY_PGP_PASSPHRASE",
+                    &format!("Passphrase for {}", path.display()),
+                    false,
+                )?;
+                stegpony_core::pgp::identity_from_pgp(&bytes, &pass)
+                    .with_context(|| format!("reading {}", path.display()))?
+            }
+        };
+        eprintln!("using OpenPGP subkey {}", info.subkey_fingerprint);
+        keys.push(RevealKey::Identity(id));
     }
     if a.passphrase || keys.is_empty() {
         keys.push(RevealKey::Passphrase(passphrase(
@@ -256,6 +275,26 @@ fn reveal(a: RevealArgs) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// An age1... recipient, or a file holding a Curve25519 OpenPGP key.
+fn parse_recipient(s: &str) -> Result<Recipient> {
+    if let Ok(r) = Recipient::parse(s) {
+        return Ok(r);
+    }
+    let path = Path::new(s);
+    if !path.is_file() {
+        bail!("{s} is neither an age1... recipient nor a key file");
+    }
+    let bytes = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    let info = stegpony_core::pgp::recipient_from_pgp(&bytes)
+        .with_context(|| format!("reading {}", path.display()))?;
+    let who = info.user_ids.first().map_or("", String::as_str);
+    eprintln!(
+        "hiding for OpenPGP subkey {} {who}",
+        info.subkey_fingerprint
+    );
+    Ok(info.recipient)
 }
 
 /// Keeps a revealed file name from escaping the output directory or clobbering a file.

@@ -14,6 +14,7 @@ bech32 = "0.12.0"
 chacha20poly1305 = "0.11.0"
 curve25519-elligator2 = "0.1.0-alpha.2"
 hkdf = "0.13.0"
+pgp = { version = "0.21.0", default-features = false }
 png = "0.18.1"
 rand_core = { version = "0.6", features = ["getrandom"] }
 rayon = "1.12.0"

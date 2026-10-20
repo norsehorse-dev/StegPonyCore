@@ -11,6 +11,7 @@ pub mod error;
 pub mod jpeg;
 pub mod keys;
 pub mod lossless;
+pub mod pgp;
 pub mod prp;
 pub mod stc;
 
