@@ -260,3 +260,103 @@ fn versions() {
     assert_eq!(format_version(), 1);
     assert!(!core_version().is_empty());
 }
+
+#[test]
+fn text_fit_sizes() {
+    let words = text_fit(TextMode::Words, text_payload_len("hi".into()), None);
+    assert!(words.fits);
+    assert_eq!(words.size, 134);
+    assert_eq!(words.bucket_payload_bytes, 48);
+    let zw = text_fit(TextMode::ZeroWidth, text_payload_len("hi".into()), None);
+    assert_eq!(zw.size, 800);
+    let decoy = text_fit(TextMode::Words, 10, Some(100));
+    assert!(decoy.size > words.size);
+    let big = text_fit(TextMode::Words, words.max_payload_bytes + 1, None);
+    assert!(!big.fits && big.size == 0);
+    assert_eq!(words.max_text_bytes + 5, words.max_payload_bytes);
+}
+
+#[test]
+fn text_round_trips_with_decoy_and_card() {
+    let good = card(9, || None);
+    let real = text("the spare key is in the shed");
+    let fake = text("pick up milk");
+    for mode in [TextMode::Words, TextMode::ZeroWidth] {
+        let t = hide_text(
+            mode,
+            "Are we still on for Saturday?".into(),
+            real.clone(),
+            HideSecret::Recipient {
+                recipient: good.recipient(),
+            },
+            Some(Decoy {
+                payload: fake.clone(),
+                secret: pass("decoy"),
+            }),
+        )
+        .unwrap();
+        let devices: Vec<Arc<dyn KeyDevice>> = vec![good.clone()];
+        let got = reveal_text(t.clone(), vec![], devices).unwrap();
+        assert_eq!(
+            got,
+            TextReveal {
+                payload: Some(real.clone()),
+                mode
+            }
+        );
+        let got = reveal_text(t.clone(), vec![reveal_pass("decoy")], vec![]).unwrap();
+        assert_eq!(got.payload, Some(fake.clone()));
+        let got = reveal_text(t, vec![reveal_pass("wrong")], vec![]).unwrap();
+        assert_eq!(
+            got,
+            TextReveal {
+                payload: None,
+                mode
+            }
+        );
+    }
+}
+
+#[test]
+fn text_errors() {
+    match reveal_text(
+        "Hello there, how are you?".into(),
+        vec![reveal_pass("x")],
+        vec![],
+    ) {
+        Err(StegError::NotStegText { word }) => assert_eq!(word, "Hello"),
+        other => panic!("{other:?}"),
+    }
+    let t = hide_text(TextMode::Words, String::new(), text("x"), pass("p"), None).unwrap();
+    let cut = t.rsplit_once(' ').unwrap().0.to_string();
+    assert!(matches!(
+        reveal_text(cut, vec![reveal_pass("p")], vec![]),
+        Err(StegError::TextIncomplete)
+    ));
+    assert!(matches!(
+        hide_text(
+            TextMode::ZeroWidth,
+            " \n".into(),
+            text("x"),
+            pass("p"),
+            None
+        ),
+        Err(StegError::CoverTextEmpty)
+    ));
+    let cancelled = card(3, || Some(DeviceError::Cancelled));
+    let t = hide_text(
+        TextMode::Words,
+        String::new(),
+        text("x"),
+        HideSecret::Recipient {
+            recipient: cancelled.recipient(),
+        },
+        None,
+    )
+    .unwrap();
+    let devices: Vec<Arc<dyn KeyDevice>> = vec![cancelled];
+    assert!(matches!(
+        reveal_text(t, vec![], devices),
+        Err(StegError::DeviceCancelled)
+    ));
+}

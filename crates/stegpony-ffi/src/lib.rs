@@ -5,6 +5,9 @@
 //! Every call here is blocking and some take seconds (a 12-megapixel hide takes
 //! several), so callers run them off the main thread.
 //!
+//! Text carriers ([`hide_text`], [`reveal_text`]) take and return strings: StegPony
+//! words, or invisible characters inside a message the user writes.
+//!
 //! Hardware keys come in through [`KeyDevice`], a foreign trait the app implements
 //! over its OpenPGP card layer; the core asks it for one X25519 operation per slot it
 //! tries and never sees the secret.
@@ -19,7 +22,7 @@ use rand_core::OsRng;
 use stegpony_core::envelope::{bucket_for, bucket_size, NUM_BUCKETS, TAG_LEN};
 use stegpony_core::jpeg::{carrier, Jpeg};
 use stegpony_core::lossless::{self, LosslessCover, SourceFormat};
-use stegpony_core::{engine, pgp, HideKey, Identity, KeyAgreement, Recipient, RevealKey};
+use stegpony_core::{engine, pgp, text, HideKey, Identity, KeyAgreement, Recipient, RevealKey};
 use zeroize::Zeroizing;
 
 uniffi::setup_scaffolding!();
@@ -57,6 +60,18 @@ pub enum StegError {
     /// A hardware key failed: removed, PIN refused, or an error from the card.
     #[error("{detail}")]
     KeyDevice { detail: String },
+    /// Pasted text with no hidden characters has a word that is not on StegPony's word
+    /// list, so it is not StegPony text. `word` is the first such word, as written
+    /// (autocorrect may have changed it).
+    #[error("\"{word}\" is not on StegPony's word list")]
+    NotStegText { word: String },
+    /// The text has StegPony's hidden characters or words, but some were lost or added
+    /// on the way (an app stripped characters, or words were edited).
+    #[error("the hidden text is incomplete")]
+    TextIncomplete,
+    /// Zero-width text needs a visible message with at least one word.
+    #[error("the cover message needs at least one word")]
+    CoverTextEmpty,
     /// Anything else (a payload too odd to frame, an output encoding failure).
     #[error("{detail}")]
     Failed { detail: String },
@@ -76,6 +91,9 @@ impl From<stegpony_core::Error> for StegError {
             E::SecretNotInFile => StegError::SecretNotInFile,
             E::WeakRecipient => StegError::WeakRecipient,
             E::KeyDevice(m) => StegError::KeyDevice { detail: m },
+            E::TextUnknownWord(word) => StegError::NotStegText { word },
+            E::TextLength => StegError::TextIncomplete,
+            E::TextCoverEmpty => StegError::CoverTextEmpty,
             _ => StegError::Failed { detail },
         }
     }
@@ -409,13 +427,13 @@ impl Cover {
     }
 }
 
-/// Size of a text payload, for [`Cover::fit`].
+/// Size of a text payload, for [`Cover::fit`] and [`text_fit`].
 #[uniffi::export]
 pub fn text_payload_len(text: String) -> u64 {
     stegpony_core::Payload::Text(text).framed_len() as u64
 }
 
-/// Size of a file payload of `size` bytes, for [`Cover::fit`], without handing the
+/// Size of a file payload of `size` bytes, for [`Cover::fit`] and [`text_fit`], without handing the
 /// file over.
 #[uniffi::export]
 pub fn file_payload_len(name: String, mime: String, size: u64) -> u64 {
@@ -486,15 +504,12 @@ impl KeyAgreement for DeviceAdapter {
     }
 }
 
-/// Looks for a payload in a PNG or JPEG that any of the secrets or devices opens.
-/// Secrets are tried first, then devices, so a hardware key is only asked when
-/// nothing else worked. `None` means nothing was found.
-#[uniffi::export]
-pub fn reveal(
-    image: Vec<u8>,
+/// The core keys for a reveal: secrets first, then devices. The flag is set when the
+/// user cancels a device operation, so the error can say so.
+fn reveal_keys(
     secrets: Vec<RevealSecret>,
     devices: Vec<Arc<dyn KeyDevice>>,
-) -> Result<Option<Payload>> {
+) -> Result<(Vec<RevealKey>, Arc<AtomicBool>)> {
     let cancelled = Arc::new(AtomicBool::new(false));
     let mut keys = Vec::with_capacity(secrets.len() + devices.len());
     for s in secrets {
@@ -508,6 +523,28 @@ pub fn reveal(
             cancelled: cancelled.clone(),
         })));
     }
+    Ok((keys, cancelled))
+}
+
+fn device_error(e: stegpony_core::Error, cancelled: &AtomicBool) -> StegError {
+    match e {
+        stegpony_core::Error::KeyDevice(_) if cancelled.load(Ordering::SeqCst) => {
+            StegError::DeviceCancelled
+        }
+        e => e.into(),
+    }
+}
+
+/// Looks for a payload in a PNG or JPEG that any of the secrets or devices opens.
+/// Secrets are tried in both slots first, then devices, so a hardware key is only
+/// asked when nothing else worked. `None` means nothing was found.
+#[uniffi::export]
+pub fn reveal(
+    image: Vec<u8>,
+    secrets: Vec<RevealSecret>,
+    devices: Vec<Arc<dyn KeyDevice>>,
+) -> Result<Option<Payload>> {
+    let (keys, cancelled) = reveal_keys(secrets, devices)?;
     let found = match lossless::sniff(&image) {
         Some(SourceFormat::Png) => lossless::reveal(&image, &keys),
         Some(SourceFormat::Jpeg) => carrier::reveal(&image, &keys),
@@ -517,12 +554,138 @@ pub fn reveal(
             })
         }
     };
-    match found {
-        Ok(p) => Ok(p.map(Into::into)),
-        Err(stegpony_core::Error::KeyDevice(_)) if cancelled.load(Ordering::SeqCst) => {
-            Err(StegError::DeviceCancelled)
+    found
+        .map(|p| p.map(Into::into))
+        .map_err(|e| device_error(e, &cancelled))
+}
+
+/// Which text carrier.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum TextMode {
+    /// A run of words from StegPony's English list. Reads as word salad.
+    Words,
+    /// Invisible characters inside a message the user writes. Weak: many apps strip
+    /// them, and any tool that looks finds them.
+    ZeroWidth,
+}
+
+impl From<TextMode> for text::TextMode {
+    fn from(m: TextMode) -> Self {
+        match m {
+            TextMode::Words => text::TextMode::Dictionary,
+            TextMode::ZeroWidth => text::TextMode::ZeroWidth,
         }
-        Err(e) => Err(e.into()),
+    }
+}
+
+impl From<text::TextMode> for TextMode {
+    fn from(m: text::TextMode) -> Self {
+        match m {
+            text::TextMode::Dictionary => TextMode::Words,
+            text::TextMode::ZeroWidth => TextMode::ZeroWidth,
+        }
+    }
+}
+
+/// How big the hidden text will be for a payload (and decoy) of the given sizes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct TextFit {
+    /// False when the payload is over the text limit ([`TextFit::max_payload_bytes`]).
+    pub fits: bool,
+    /// Words (Words mode) or invisible characters (ZeroWidth mode); 0 when it doesn't
+    /// fit.
+    pub size: u64,
+    /// Largest payload StegPony writes into text, and the largest text message.
+    pub max_payload_bytes: u64,
+    pub max_text_bytes: u64,
+    /// Largest payload that keeps the output at its current size, for "N more bytes
+    /// before it grows"; 0 when it doesn't fit.
+    pub bucket_payload_bytes: u64,
+}
+
+/// Payload sizes come from [`text_payload_len`] and [`file_payload_len`].
+#[uniffi::export]
+pub fn text_fit(mode: TextMode, payload_len: u64, decoy_len: Option<u64>) -> TextFit {
+    let max_payload_bytes = (bucket_size(text::MAX_TEXT_BUCKET) - TAG_LEN) as u64;
+    let max_text_bytes = text::max_text_bytes() as u64;
+    let payload_len = usize::try_from(payload_len).unwrap_or(usize::MAX);
+    let decoy_len = decoy_len.map(|d| usize::try_from(d).unwrap_or(usize::MAX));
+    match text::bucket_for_text(payload_len, decoy_len) {
+        Ok(k) => TextFit {
+            fits: true,
+            size: text::symbols_for(mode.into(), k) as u64,
+            max_payload_bytes,
+            max_text_bytes,
+            bucket_payload_bytes: (bucket_size(k) - TAG_LEN) as u64,
+        },
+        Err(_) => TextFit {
+            fits: false,
+            size: 0,
+            max_payload_bytes,
+            max_text_bytes,
+            bucket_payload_bytes: 0,
+        },
+    }
+}
+
+/// Hides `payload` in text: StegPony words, or invisible characters inside `cover`
+/// (ignored in Words mode). The decoy works as for images.
+#[uniffi::export]
+pub fn hide_text(
+    mode: TextMode,
+    cover: String,
+    payload: Payload,
+    secret: HideSecret,
+    decoy: Option<Decoy>,
+) -> Result<String> {
+    let payload: stegpony_core::Payload = payload.into();
+    let key = secret.into_core()?;
+    let decoy = match decoy {
+        Some(d) => Some((
+            stegpony_core::Payload::from(d.payload),
+            d.secret.into_core()?,
+        )),
+        None => None,
+    };
+    let decoy = decoy.as_ref().map(|(p, k)| (p, k));
+    Ok(text::hide(
+        mode.into(),
+        &cover,
+        (&payload, &key),
+        decoy,
+        &mut OsRng,
+    )?)
+}
+
+/// What [`reveal_text`] found. `mode` says what kind of StegPony text it was, also
+/// when no secret opened it.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct TextReveal {
+    pub payload: Option<Payload>,
+    pub mode: TextMode,
+}
+
+/// Looks for a payload in pasted text, with secrets tried before devices as in
+/// [`reveal`]. Text that cannot be StegPony text at all is an error
+/// ([`StegError::NotStegText`], [`StegError::TextIncomplete`]); StegPony text that no
+/// secret opens has no payload.
+#[uniffi::export]
+pub fn reveal_text(
+    text: String,
+    secrets: Vec<RevealSecret>,
+    devices: Vec<Arc<dyn KeyDevice>>,
+) -> Result<TextReveal> {
+    let (keys, cancelled) = reveal_keys(secrets, devices)?;
+    match text::reveal(&text, &keys) {
+        Ok(text::TextFound::Payload(p, m)) => Ok(TextReveal {
+            payload: Some(p.into()),
+            mode: m.into(),
+        }),
+        Ok(text::TextFound::Nothing(m)) => Ok(TextReveal {
+            payload: None,
+            mode: m.into(),
+        }),
+        Err(e) => Err(device_error(e, &cancelled)),
     }
 }
 
