@@ -115,3 +115,93 @@ fn wrong_device_finds_nothing_and_a_failing_device_is_reported() {
         "{e}"
     );
 }
+
+#[test]
+fn text_reveals_with_a_device_and_asks_at_most_once_per_slot() {
+    use stegpony_core::text::{self, TextFound, TextMode};
+    let mut rng = ChaCha20Rng::seed_from_u64(91);
+    let id = Identity::generate(&mut rng);
+    let p = Payload::Text("by the old mill".into());
+    for mode in [TextMode::Dictionary, TextMode::ZeroWidth] {
+        let t = text::hide(
+            mode,
+            "see you soon",
+            (&p, &HideKey::Recipient(id.recipient())),
+            None,
+            &mut rng,
+        )
+        .unwrap();
+        let dev = Device::new(&id);
+        let found = text::reveal(&t, &[RevealKey::External(dev.clone())]).unwrap();
+        assert_eq!(found, TextFound::Payload(p.clone(), mode));
+        assert!((1..=2).contains(&dev.calls.load(Ordering::SeqCst)));
+
+        let failing = Arc::new(Device {
+            secret: secret_of(&id),
+            calls: AtomicUsize::new(0),
+            fail: true,
+        });
+        assert!(matches!(
+            text::reveal(&t, &[RevealKey::External(failing)]),
+            Err(Error::KeyDevice(_))
+        ));
+    }
+}
+
+#[test]
+fn text_tries_secrets_in_both_slots_before_a_device() {
+    use stegpony_core::text::{self, TextFound, TextMode};
+    let id = Identity::generate(&mut ChaCha20Rng::seed_from_u64(5));
+    let p = Payload::Text("only the passphrase".into());
+    for seed in 0..6 {
+        let mut rng = ChaCha20Rng::seed_from_u64(seed);
+        let t = text::hide(
+            TextMode::Dictionary,
+            "",
+            (
+                &p,
+                &HideKey::Passphrase(zeroize::Zeroizing::new("pw".into())),
+            ),
+            None,
+            &mut rng,
+        )
+        .unwrap();
+        let dev = Device::new(&id);
+        let keys = [
+            RevealKey::External(dev.clone()),
+            RevealKey::Passphrase(zeroize::Zeroizing::new("pw".into())),
+        ];
+        assert_eq!(
+            text::reveal(&t, &keys).unwrap(),
+            TextFound::Payload(p.clone(), TextMode::Dictionary)
+        );
+        assert_eq!(dev.calls.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[test]
+fn images_try_secrets_in_both_slots_before_a_device() {
+    let id = Identity::generate(&mut ChaCha20Rng::seed_from_u64(6));
+    let cover = fixture("cover_rgb.png");
+    let p = Payload::Text("only the passphrase".into());
+    for seed in 0..4 {
+        let mut rng = ChaCha20Rng::seed_from_u64(seed);
+        let out = lossless::hide(
+            &cover,
+            (
+                &p,
+                &HideKey::Passphrase(zeroize::Zeroizing::new("pw".into())),
+            ),
+            None,
+            &mut rng,
+        )
+        .unwrap();
+        let dev = Device::new(&id);
+        let keys = [
+            RevealKey::External(dev.clone()),
+            RevealKey::Passphrase(zeroize::Zeroizing::new("pw".into())),
+        ];
+        assert_eq!(lossless::reveal(&out.png, &keys).unwrap(), Some(p.clone()));
+        assert_eq!(dev.calls.load(Ordering::SeqCst), 0);
+    }
+}

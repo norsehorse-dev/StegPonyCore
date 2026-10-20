@@ -278,31 +278,42 @@ pub fn hide<C: Cover, R: RngCore + CryptoRng>(
 /// also the answer for a wrong key: the two cases are indistinguishable by design.
 pub fn reveal<C: Cover>(cover: &C, keys: &[RevealKey]) -> Result<Option<Payload>> {
     let locs = locators(keys)?;
-    for slot in 0..2u8 {
-        let n = slot_len(cover, slot);
-        for loc in &locs {
-            let Some(layout) = layout(n, loc.mode) else {
-                continue;
-            };
-            let key = envelope::prp_key(&loc.locate, slot);
-            let positions = positions(cover, &key, slot, n);
-            if positions.len() != n {
-                continue;
-            }
-            let y: Vec<u8> = positions.iter().map(|&t| cover.symbol(t)).collect();
-            let (hy, by) = y.split_at(layout.head);
-            let head_len = loc.mode.head_len();
-            let head = trits_to_bytes(&stc::extract(hy, head_trits(loc.mode))?, head_len);
-            let Some(opened) = open_head(loc.key, &head)? else {
-                continue;
-            };
-            if !body_fits(opened.bucket, layout.body) {
-                continue;
-            }
-            let size = bucket_size(opened.bucket);
-            let body = trits_to_bytes(&stc::extract(by, trits_for_bits(size * 8))?, size);
-            if let Some(p) = open_body(&opened, &body) {
-                return Ok(Some(p));
+    // Keys held in memory try both slots before any external key is asked, so a
+    // hardware key is touched only when nothing else opens the image.
+    let external = |l: &&envelope::Locator| matches!(l.key, RevealKey::External(_));
+    let order: Vec<&envelope::Locator> = locs
+        .iter()
+        .filter(|l| !external(l))
+        .chain(locs.iter().filter(external))
+        .collect();
+    let groups = order.chunk_by(|a, b| external(a) == external(b));
+    for group in groups {
+        for slot in 0..2u8 {
+            let n = slot_len(cover, slot);
+            for loc in group {
+                let Some(layout) = layout(n, loc.mode) else {
+                    continue;
+                };
+                let key = envelope::prp_key(&loc.locate, slot);
+                let positions = positions(cover, &key, slot, n);
+                if positions.len() != n {
+                    continue;
+                }
+                let y: Vec<u8> = positions.iter().map(|&t| cover.symbol(t)).collect();
+                let (hy, by) = y.split_at(layout.head);
+                let head_len = loc.mode.head_len();
+                let head = trits_to_bytes(&stc::extract(hy, head_trits(loc.mode))?, head_len);
+                let Some(opened) = open_head(loc.key, &head)? else {
+                    continue;
+                };
+                if !body_fits(opened.bucket, layout.body) {
+                    continue;
+                }
+                let size = bucket_size(opened.bucket);
+                let body = trits_to_bytes(&stc::extract(by, trits_for_bits(size * 8))?, size);
+                if let Some(p) = open_body(&opened, &body) {
+                    return Ok(Some(p));
+                }
             }
         }
     }
