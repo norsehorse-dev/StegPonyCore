@@ -54,6 +54,8 @@ Steganography lowers the odds of being noticed; it does not make hiding undetect
 
 ## Building and testing
 
+`rust-toolchain.toml` pins the Rust release the apps' libraries are built with (1.95.0), so a rebuild gives the same bytes. The core and CLI also build on Rust 1.88, which CI checks.
+
 ```
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings

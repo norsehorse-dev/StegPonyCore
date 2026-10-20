@@ -8,8 +8,8 @@ repository.workspace = true
 authors.workspace = true
 publish = false
 # No rust-version: UniFFI's dependency tree needs a newer Rust than the core's 1.88
-# (cargo-platform 0.3.3 asks for 1.91), and the bindings are only ever built with the
-# toolchain the app builds pin.
+# (cargo-platform 0.3.3 asks for 1.91), and the bindings are built with the toolchain
+# rust-toolchain.toml pins.
 
 [lib]
 name = "stegpony_ffi"
