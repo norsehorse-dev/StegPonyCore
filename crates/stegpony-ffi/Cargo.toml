@@ -1,0 +1,34 @@
+[package]
+name = "stegpony-ffi"
+description = "UniFFI bindings over stegpony-core for the StegPony apps"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+# No rust-version: UniFFI's dependency tree needs a newer Rust than the core's 1.88
+# (cargo-platform 0.3.3 asks for 1.91), and the bindings are only ever built with the
+# toolchain the app builds pin.
+
+[lib]
+name = "stegpony_ffi"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+rand_core = { version = "0.6", features = ["getrandom"] }
+stegpony-core = { version = "0.1.0", path = "../stegpony-core" }
+thiserror = "2.0.21"
+uniffi = "0.32"
+zeroize = "1.9.1"
+
+[features]
+cli = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["cli"]
+
+[dev-dependencies]
+x25519-dalek = { version = "2", features = ["static_secrets"] }

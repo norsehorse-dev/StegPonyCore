@@ -18,6 +18,15 @@ Native JPEG (Phase B):
 
 - **JPEG carrier.** All AC coefficients in every component, including zeros, with J-UNIWARD costs and the same two-slot engine. Native JPEG output, passphrase and public-key payloads, decoys, and metadata stripped by default. Its Low / Medium / High rating comes from a steganalysis baseline on real phone photos; see [tools/steganalysis](tools/steganalysis/README.md).
 
+App bindings:
+
+- **stegpony-ffi.** The surface the apps call, through [UniFFI](https://mozilla.github.io/uniffi-rs/): a `Cover` that reports capacity and rating per mode and hides, `reveal` over passphrases, identities and hardware keys (a `KeyDevice` the app implements over its OpenPGP card layer), age key generation and parsing, and OpenPGP key import. StegPonyAndroid builds it as a submodule and generates its Kotlin from it:
+
+  ```
+  cargo build -p stegpony-ffi
+  cargo run -p stegpony-ffi --features cli --bin uniffi-bindgen -- generate --library target/debug/libstegpony_ffi.so --language kotlin --out-dir bindings
+  ```
+
 Coming next: the Android app (Phase C), text modes (Phase D), and a mode that survives messenger recompression (Phase E).
 
 ## Command line
@@ -37,7 +46,7 @@ cargo build --release
 
 Lossless mode is the default. Reveal tells PNG from JPEG on its own. Native JPEG output strips metadata the way ScrubPony does by default: the ICC color profile stays, EXIF shrinks to the orientation tag alone so the photo still shows the right way up, and everything else (location, timestamps, device details, thumbnails, XMP) goes. `--keep-metadata` keeps all of it.
 
-`-r` also takes a file holding a Curve25519 OpenPGP public key, and `-i` an OpenPGP secret key. Passphrases are prompted for, or read from `STEGPONY_PASSPHRASE` and `STEGPONY_DECOY_PASSPHRASE`, `STEGPONY_DECOY_PASSPHRASE` and, for OpenPGP secret keys, `STEGPONY_PGP_PASSPHRASE`. Add a decoy with `--decoy-message` or `--decoy-file`, under `--decoy-recipient` or the decoy passphrase.
+`-r` also takes a file holding a Curve25519 OpenPGP public key, and `-i` an OpenPGP secret key. Passphrases are prompted for, or read from `STEGPONY_PASSPHRASE`, `STEGPONY_DECOY_PASSPHRASE` and, for OpenPGP secret keys, `STEGPONY_PGP_PASSPHRASE`. Add a decoy with `--decoy-message` or `--decoy-file`, under `--decoy-recipient` or the decoy passphrase.
 
 ## What it does not promise
 

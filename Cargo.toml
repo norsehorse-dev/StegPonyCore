@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/stegpony-core", "crates/stegpony-cli"]
+members = ["crates/stegpony-core", "crates/stegpony-cli", "crates/stegpony-ffi"]
 
 [workspace.package]
 version = "0.1.0"
