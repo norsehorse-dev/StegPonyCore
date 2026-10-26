@@ -152,6 +152,23 @@ def prepare(args):
         raise ValueError("No photos found")
     if any(q > 100 for q in args.qualities):
         raise ValueError("JPEG qualities must be in 1..100")
+    match = getattr(args, "match", None)
+    if match:
+        # Pre-matching: encode with the exact tables a channel returned, instead of a
+        # quality setting, so the channel's recompression has less to change.
+        raw = match.expanduser().read_bytes()
+        info = describe(raw)
+        tables = info["quantization_natural"]
+        if info["format"] != "JPEG" or set(tables) != {"0", "1"}:
+            raise ValueError("--match needs a JPEG with one luma and one chroma table")
+        if [c[1:3] for c in info["components"]] != ([[2, 2], [1, 1], [1, 1]] if args.sampling == "420" else [[1, 1]] * 3):
+            raise ValueError(f"--match file's sampling is not {args.sampling}; pass the matching --sampling")
+        family = table_family(info)
+        encodings = [(f"t{family.split()[-1]}", None, [tables["0"], tables["1"]])]
+        matched = {"file": match.name, "sha256": info["sha256"], "tables": family}
+    else:
+        encodings = [(f"q{q}", q, None) for q in args.qualities]
+        matched = None
     out = args.out.expanduser().resolve()
     if out.exists():
         raise ValueError(f"Run folder already exists; choose a new folder: {out}")
@@ -160,7 +177,7 @@ def prepare(args):
         directory = Path(source).expanduser().resolve()
         if directory.is_dir() and out.is_relative_to(directory):
             raise ValueError("Run folder must be outside the input photo folder")
-    n = len(photos) * len(args.sizes) * len(args.qualities)
+    n = len(photos) * len(args.sizes) * len(encodings)
     print(f"{len(photos)} source photos, {n} calibration JPEGs, {len(CHANNELS)} channel worksheets")
     if args.dry_run:
         for p in photos:
@@ -182,7 +199,8 @@ def prepare(args):
         "generator_sha256": sha256(Path(__file__).read_bytes()),
         "encoder": {"python": platform.python_version(), "pillow": PILLOW_VERSION,
                     "jpeg": features.version_codec("jpg"), "libjpeg_turbo": features.version_feature("libjpeg_turbo")},
-        "settings": {"long_edges": args.sizes, "qualities": args.qualities,
+        "settings": {"long_edges": args.sizes,
+                     "qualities": [] if matched else args.qualities, "matched_tables": matched,
                      "sampling": args.sampling, "resize": "LANCZOS, never upscale",
                      "orientation": "EXIF transposed before resize", "metadata": "stripped",
                      "color": "decoded RGB, no ICC color transform"},
@@ -202,12 +220,13 @@ def prepare(args):
             resized = rgb.copy()
             if edge:
                 resized.thumbnail((edge, edge), Image.Resampling.LANCZOS)
-            for quality in args.qualities:
+            for tag, quality, qtables in encodings:
                 label = str(edge) if edge else "original"
-                image_id = f"{source_id}_m{label}_q{quality}_{args.sampling}"
+                image_id = f"{source_id}_m{label}_{tag}_{args.sampling}"
                 relative = f"send/{image_id}.jpg"
                 data = io.BytesIO()
-                resized.save(data, "JPEG", quality=quality,
+                options = {"qtables": qtables} if qtables else {"quality": quality}
+                resized.save(data, "JPEG", **options,
                              subsampling=0 if args.sampling == "444" else 2,
                              optimize=False, progressive=False)
                 encoded = data.getvalue()
@@ -591,6 +610,7 @@ def main(argv=None):
     p.add_argument("--sizes", type=size_list, default=size_list("1600,2048,original"))
     p.add_argument("--qualities", type=positive_list, default=positive_list("80,95"))
     p.add_argument("--sampling", choices=("420", "444"), default="420")
+    p.add_argument("--match", type=Path, help="Encode with this returned JPEG's exact tables instead of --qualities")
     p.add_argument("--recursive", action="store_true")
     p.add_argument("--limit", type=int, help="Take the first N photos in sorted path order")
     p.add_argument("--dry-run", action="store_true")

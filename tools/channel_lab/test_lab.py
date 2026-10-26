@@ -163,6 +163,26 @@ class ChannelLabTests(unittest.TestCase):
         self.assertIsNone(info["ijg_quality"])
         self.assertTrue(lab.table_family(info).startswith("other "))
 
+    def test_match_encodes_with_returned_tables(self):
+        returned = self.root / "returned.jpg"
+        luma = [2 + (k % 7) for k in range(64)]
+        chroma = [3 + (k % 5) for k in range(64)]
+        Image.new("RGB", (40, 24), (10, 200, 90)).save(returned, qtables=[luma, chroma], subsampling=2)
+        manifest = self.prepare(sizes=[32], match=returned)
+        self.assertEqual(len(manifest["images"]), 1)
+        item = manifest["images"][0]
+        family = lab.table_family(lab.describe(returned.read_bytes()))
+        self.assertTrue(family.startswith("other "))
+        self.assertEqual(item["id"], f"p001_m32_t{family.split()[-1]}_420")
+        self.assertEqual(item["quantization_natural"], {"0": luma, "1": chroma})
+        self.assertIsNone(item["requested_quality"])
+        self.assertEqual(manifest["settings"]["matched_tables"]["tables"], family)
+        self.assertEqual(manifest["settings"]["qualities"], [])
+        other = self.root / "other"
+        with self.assertRaisesRegex(ValueError, "sampling"):
+            self.prepare(out=other, sampling="444", match=returned)
+        self.assertFalse(other.exists())
+
     def test_requantize_rounds_half_away_from_zero(self):
         self.assertEqual(lab.requantize(7, 2, 2), 7)
         self.assertEqual(lab.requantize(3, 2, 4), 2)

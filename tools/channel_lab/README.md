@@ -29,6 +29,17 @@ RGB values are not color-managed, so use ordinary SDR, sRGB phone photos for thi
 first run. Originals are never changed. Multi-frame and non-RGB/gray inputs fail
 before a run is created.
 
+Once a channel has returned photos, `--match RETURNED.jpg` encodes with that file's
+exact quantization tables instead of `--qualities` (pre-matching), so the next batch
+measures how much the channel still changes when it is handed its own tables:
+
+```
+python3 tools/channel_lab/lab.py prepare PHOTO1.jpg PHOTO2.jpg --sizes 1600 --match drafts/channel-lab/run-01/received/signal-photo/p001_m1600_q80_420.jpg --out drafts/channel-lab/run-02
+```
+
+Matched images are named with the table hash (`p001_m1600_ta66d0143_420`), and the
+manifest records the file the tables came from. The sampling must match the file's.
+
 Use `--sizes 1280,1600,2048,2560,original --qualities 70,80,90,95` for a wider sweep,
 and a separate `--sampling 444` run to probe chroma handling. Folder input is flat by
 default; `--recursive` opts into subfolders and `--limit` caps source count. The
