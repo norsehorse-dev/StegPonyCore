@@ -94,6 +94,9 @@ jobs:
       - name: Compare with libjpeg, libjpeg-turbo and mozjpeg
         run: python3 tools/check_jpeg.py
 
+      - name: Check channel preparation with independent libjpeg decoding
+        run: python3 tools/check_channel_prep.py
+
   msrv:
     name: Minimum supported Rust (rust-version in Cargo.toml)
     runs-on: ubuntu-latest

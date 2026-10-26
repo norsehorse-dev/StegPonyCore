@@ -1,9 +1,9 @@
 //! JPEG coefficient I/O in pure Rust: reads a JPEG's quantized DCT coefficients and
 //! writes them back without ever going through pixels.
 //!
-//! Only the entropy layer is handled (Huffman decode and encode, T.81 Annex F and G);
-//! there is no IDCT here. Everything else in the file (APPn, COM, DQT, DRI, the frame
-//! header) is kept byte for byte. When every symbol the new coefficients need exists in
+//! Coefficient I/O handles the entropy layer (T.81 Annex F and G) without pixels.
+//! Separate internal encoding/headroom helpers support channel cover preparation.
+//! Everything else in the file (APPn, COM, DQT, DRI, the frame header) is kept byte for byte. When every symbol the new coefficients need exists in
 //! the file's own Huffman tables, those tables are kept and a file whose coefficients
 //! did not change comes back identical. When embedding needs a symbol the tables lack
 //! (an optimized table only lists the symbols its image used), every scan gets fresh
@@ -15,6 +15,8 @@
 
 pub mod carrier;
 mod costs;
+pub(crate) mod encode;
+pub(crate) mod headroom;
 mod huffman;
 mod metadata;
 mod scan;
@@ -298,6 +300,83 @@ impl Jpeg {
             segments,
             trailing: bytes[pos..].to_vec(),
         })
+    }
+
+    /// Normalizes supported coefficients to one sequential scan for pixel decoders
+    /// that cannot handle a particular progressive/restart scan arrangement.
+    /// Keeps color/EXIF markers for the decoding step; this is not stego output.
+    pub(crate) fn into_sequential(mut self) -> Result<Vec<u8>> {
+        let mut dqt = Vec::new();
+        for (i, c) in self.components.iter_mut().enumerate() {
+            c.tq = i as u8;
+            let wide = c.quant.iter().any(|&q| q > 255);
+            dqt.push((if wide { 0x10 } else { 0 }) | c.tq);
+            for &k in &ZIGZAG {
+                if wide {
+                    dqt.extend_from_slice(&c.quant[k].to_be_bytes());
+                } else {
+                    dqt.push(c.quant[k] as u8);
+                }
+            }
+        }
+        let wide = self
+            .components
+            .iter()
+            .any(|c| c.quant.iter().any(|&q| q > 255));
+        self.kind = if wide {
+            FrameKind::ExtendedSequential
+        } else {
+            FrameKind::Baseline
+        };
+        let mut sof = vec![8];
+        sof.extend_from_slice(&self.height.to_be_bytes());
+        sof.extend_from_slice(&self.width.to_be_bytes());
+        sof.push(self.components.len() as u8);
+        let mut sos = vec![self.components.len() as u8];
+        let mut comps = Vec::new();
+        for (i, c) in self.components.iter().enumerate() {
+            sof.extend_from_slice(&[c.id, (c.h << 4) | c.v, c.tq]);
+            let table = if i == 0 { 0 } else { 1 };
+            sos.extend_from_slice(&[c.id, (table << 4) | table]);
+            comps.push(ScanComp {
+                index: i,
+                td: table,
+                ta: table,
+            });
+        }
+        sos.extend_from_slice(&[0, 63, 0]);
+        self.segments.retain(|s| {
+            matches!(
+                s,
+                Segment::Marker {
+                    code: 0xe0..=0xef | 0xfe,
+                    ..
+                }
+            )
+        });
+        self.segments.extend([
+            Segment::Marker {
+                code: DQT,
+                data: dqt,
+            },
+            Segment::Marker {
+                code: if wide { 0xc1 } else { 0xc0 },
+                data: sof,
+            },
+            Segment::Scan {
+                header: ScanHeader {
+                    comps,
+                    ss: 0,
+                    se: 63,
+                    ah: 0,
+                    al: 0,
+                },
+                data: sos,
+                restart: 0,
+            },
+        ]);
+        self.trailing.clear();
+        self.write()
     }
 
     /// Writes the file back, re-encoding every scan from the current coefficients.
@@ -644,4 +723,38 @@ fn parse_scan(d: &[u8], comps: &[Component], kind: FrameKind) -> Result<ScanHead
         ah,
         al,
     })
+}
+
+#[cfg(test)]
+mod sequential_tests {
+    use super::*;
+    #[test]
+    fn normalization_preserves_content_coefficients_tables_and_color_markers() {
+        for name in [
+            "progressive_restart.jpg",
+            "progressive_mozjpeg.jpg",
+            "sampling_mixed.jpg",
+            "gray.jpg",
+            "cmyk.jpg",
+        ] {
+            let bytes = std::fs::read(format!(
+                "{}/tests/fixtures/jpeg/{name}",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap();
+            let j = Jpeg::parse(&bytes).unwrap();
+            let normalized = j.clone().into_sequential().unwrap();
+            let back = Jpeg::parse(&normalized).unwrap();
+            assert_eq!((j.width, j.height), (back.width, back.height));
+            assert_eq!(j.marker_segments(), back.marker_segments());
+            for (a, b) in j.components.iter().zip(&back.components) {
+                assert_eq!((a.id, a.h, a.v, a.quant), (b.id, b.h, b.v, b.quant));
+                for by in 0..a.height_blocks {
+                    for bx in 0..a.width_blocks {
+                        assert_eq!(a.block(bx, by), b.block(bx, by), "{name}/{bx}/{by}");
+                    }
+                }
+            }
+        }
+    }
 }

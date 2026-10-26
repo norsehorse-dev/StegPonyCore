@@ -14,7 +14,7 @@ Part of the Pony family of privacy tools by NorseHorse. The Android app, and lat
 
 Native JPEG (Phase B):
 
-- **JPEG coefficient codec.** A pure-Rust reader and writer for a JPEG's quantized DCT coefficients (`stegpony_core::jpeg`): baseline, extended sequential and progressive Huffman files, any sampling factors, restart intervals. No pixels and no IDCT, so a cover's own compression is kept; an unchanged file writes back byte for byte, and new Huffman tables are built only when changed coefficients need symbols the old ones lack. Checked against libjpeg, libjpeg-turbo and mozjpeg.
+- **JPEG coefficient codec.** A pure-Rust reader and writer for a JPEG's quantized DCT coefficients (`stegpony_core::jpeg`): baseline, extended sequential and progressive Huffman files, any sampling factors, restart intervals. Coefficient I/O does not pass through pixels, so a cover's own compression is kept; an unchanged file writes back byte for byte, and new Huffman tables are built only when changed coefficients need symbols the old ones lack. Checked against libjpeg, libjpeg-turbo and mozjpeg.
 
 - **JPEG carrier.** All AC coefficients in every component, including zeros, with J-UNIWARD costs and the same two-slot engine. Native JPEG output, passphrase and public-key payloads, decoys, and metadata stripped by default. Its Low / Medium / High rating comes from a steganalysis baseline on real phone photos; see [tools/steganalysis](tools/steganalysis/README.md).
 
@@ -32,7 +32,12 @@ App bindings:
   cargo run -p stegpony-ffi --features cli --bin uniffi-bindgen -- generate --library target/debug/libstegpony_ffi.so --language kotlin --out-dir bindings
   ```
 
-Coming next: a mode that survives messenger recompression (Phase E).
+Phase E now includes [experimental Telegram cover preparation](docs/CHANNEL_PREPARATION.md):
+resize to at most 1280, exact IJG q72/4:2:0 encoding, and bounded headroom adjustment
+before ordinary native hiding. Core `channel::prepare` and the UniFFI
+`Cover::prepare_for_channel` return the prepared cover and a report. Rust-prepared
+output still needs real Telegram delivery tests; WhatsApp and Signal need a
+separate error-tolerant carrier.
 
 ## Command line
 

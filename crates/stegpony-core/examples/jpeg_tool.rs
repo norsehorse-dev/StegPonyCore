@@ -44,6 +44,21 @@ fn run(args: &[String]) -> Result<(), String> {
         Jpeg::parse(&b).map_err(|e| format!("{p}: {e}"))
     };
     match args.first().map(String::as_str) {
+        Some("prepare-telegram") if args.len() == 3 => {
+            let bytes = fs::read(&args[1]).map_err(|e| e.to_string())?;
+            let prepared = stegpony_core::channel::prepare(
+                &bytes,
+                stegpony_core::channel::Channel::TelegramPhotoV1,
+            )
+            .map_err(|e| e.to_string())?;
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&args[2])
+                .map_err(|e| format!("new output {}: {e}", args[2]))?;
+            std::io::Write::write_all(&mut file, &prepared.jpeg).map_err(|e| e.to_string())?;
+            println!("{:?}", prepared.report);
+        }
         Some("info") if args.len() == 2 => {
             let j = read(&args[1])?;
             println!(
@@ -105,7 +120,9 @@ fn run(args: &[String]) -> Result<(), String> {
                 return Err("re-read coefficients differ from what was written".into());
             }
         }
-        _ => return Err("usage: jpeg_tool info|roundtrip|dump|perturb ...".into()),
+        _ => {
+            return Err("usage: jpeg_tool info|roundtrip|dump|perturb|prepare-telegram ...".into())
+        }
     }
     Ok(())
 }

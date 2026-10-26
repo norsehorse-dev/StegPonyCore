@@ -5,7 +5,9 @@
 //! layout with decoy, syndrome-trellis embedding, and Lossless (PNG) mode. Phase B adds
 //! the pure-Rust JPEG coefficient codec and native carrier in [`jpeg::carrier`]. Phase D
 //! adds the text carriers in [`text`]: zero-width characters and dictionary words.
+//! Experimental channel cover preparation is in [`channel`], before native hiding.
 
+pub mod channel;
 pub mod engine;
 pub mod envelope;
 pub mod error;

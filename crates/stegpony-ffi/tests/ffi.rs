@@ -360,3 +360,74 @@ fn text_errors() {
         Err(StegError::DeviceCancelled)
     ));
 }
+
+#[test]
+fn channel_preparation_returns_a_new_cover_for_fit_and_hide() {
+    let profiles = channel_profiles();
+    assert_eq!(profiles.len(), 1);
+    let profile = &profiles[0];
+    assert_eq!(profile.channel, Channel::TelegramPhotoV1);
+    assert_eq!((profile.max_long_edge, profile.quality), (1280, 72));
+    assert!(profile.experimental && profile.last_verified.is_none());
+    let source = Cover::new(fixture("cover_rgb.png")).unwrap();
+    let source_capacity = source.capacity(ImageMode::Lossless).unwrap();
+    let prepared = source.prepare_for_channel(profile.channel).unwrap();
+    assert_eq!(prepared.cover.format(), ImageFormat::Jpeg);
+    assert_eq!(prepared.report.profile_id, profile.id);
+    assert_eq!(prepared.report.profile_revision, profile.revision);
+    assert!(prepared.report.output_width <= 1280 && prepared.report.output_height <= 1280);
+    assert_eq!(source.format(), ImageFormat::Png);
+    assert_eq!(
+        source.capacity(ImageMode::Lossless).unwrap(),
+        source_capacity
+    );
+    assert!(source.capacity(ImageMode::Jpeg).is_err());
+    let cap = prepared.cover.capacity(ImageMode::Jpeg).unwrap();
+    assert!(cap.max_text_bytes > 0);
+    let fit = prepared
+        .cover
+        .fit(
+            ImageMode::Jpeg,
+            text_payload_len("real".into()),
+            Some(text_payload_len("decoy".into())),
+        )
+        .unwrap();
+    assert!(fit.fits);
+    let out = prepared
+        .cover
+        .hide(
+            ImageMode::Jpeg,
+            text("real"),
+            pass("real key"),
+            Some(Decoy {
+                payload: text("decoy"),
+                secret: pass("decoy key"),
+            }),
+            false,
+        )
+        .unwrap();
+    assert_eq!(out.format, ImageFormat::Jpeg);
+    assert_eq!(
+        reveal(out.image.clone(), vec![reveal_pass("real key")], vec![]).unwrap(),
+        Some(text("real"))
+    );
+    assert_eq!(
+        reveal(out.image, vec![reveal_pass("decoy key")], vec![]).unwrap(),
+        Some(text("decoy"))
+    );
+}
+
+#[test]
+fn channel_preparation_reports_unsupported_covers() {
+    let cover = Cover::new(fixture("jpeg/cmyk.jpg")).unwrap();
+    assert!(matches!(
+        cover.prepare_for_channel(Channel::TelegramPhotoV1),
+        Err(StegError::UnsupportedCover { .. })
+    ));
+    let bad = Cover::new(b"\xff\xd8\xfftruncated".to_vec()).unwrap();
+    assert!(bad.prepare_for_channel(Channel::TelegramPhotoV1).is_err());
+    assert!(matches!(
+        StegError::from(stegpony_core::Error::PreparationFailed("limit".into())),
+        StegError::PreparationFailed { .. }
+    ));
+}

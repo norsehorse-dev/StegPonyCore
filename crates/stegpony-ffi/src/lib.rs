@@ -2,6 +2,8 @@
 //!
 //! The apps hand over file bytes, never decoded bitmaps: platform decoders apply color
 //! management and resampling that destroy the low-order bits the format lives in.
+//! Channel preparation returns a new cover through [`Cover::prepare_for_channel`];
+//! inspect [`channel_profiles`] for its experimental status and observation scope.
 //! Every call here is blocking and some take seconds (a 12-megapixel hide takes
 //! several), so callers run them off the main thread.
 //!
@@ -22,7 +24,10 @@ use rand_core::OsRng;
 use stegpony_core::envelope::{bucket_for, bucket_size, NUM_BUCKETS, TAG_LEN};
 use stegpony_core::jpeg::{carrier, Jpeg};
 use stegpony_core::lossless::{self, LosslessCover, SourceFormat};
-use stegpony_core::{engine, pgp, text, HideKey, Identity, KeyAgreement, Recipient, RevealKey};
+use stegpony_core::{
+    channel as core_channel, engine, pgp, text, HideKey, Identity, KeyAgreement, Recipient,
+    RevealKey,
+};
 use zeroize::Zeroizing;
 
 uniffi::setup_scaffolding!();
@@ -41,6 +46,9 @@ pub enum StegError {
     CoverTooSmall,
     #[error("the message does not fit in this cover")]
     PayloadTooLarge,
+    /// The channel preparation headroom criterion could not be reached.
+    #[error("{detail}")]
+    PreparationFailed { detail: String },
     /// A key string or key file could not be used; `detail` says why.
     #[error("{detail}")]
     BadKey { detail: String },
@@ -84,6 +92,7 @@ impl From<stegpony_core::Error> for StegError {
         match e {
             E::BadCover(_) => StegError::BadCover { detail },
             E::UnsupportedCover(_) => StegError::UnsupportedCover { detail },
+            E::PreparationFailed(_) => StegError::PreparationFailed { detail },
             E::CoverTooSmall => StegError::CoverTooSmall,
             E::PayloadTooLarge { .. } => StegError::PayloadTooLarge,
             E::BadKey(_) => StegError::BadKey { detail },
@@ -105,6 +114,99 @@ type Result<T> = std::result::Result<T, StegError>;
 pub enum ImageFormat {
     Png,
     Jpeg,
+}
+
+/// Versioned preparation choice. Experimental: preparation is not a delivery guarantee.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum Channel {
+    TelegramPhotoV1,
+}
+
+impl Channel {
+    fn into_core(self) -> core_channel::Channel {
+        match self {
+            Self::TelegramPhotoV1 => core_channel::Channel::TelegramPhotoV1,
+        }
+    }
+}
+
+impl From<core_channel::Channel> for Channel {
+    fn from(channel: core_channel::Channel) -> Self {
+        match channel {
+            core_channel::Channel::TelegramPhotoV1 => Self::TelegramPhotoV1,
+        }
+    }
+}
+
+/// Descriptive, versioned settings from the core. Apps do not choose JPEG tables.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct ChannelProfile {
+    pub channel: Channel,
+    pub id: String,
+    pub revision: u32,
+    pub max_long_edge: u32,
+    pub quality: u8,
+    pub sampling: String,
+    pub experimental: bool,
+    pub last_observed: String,
+    pub last_verified: Option<String>,
+    pub observed_scope: String,
+}
+
+#[uniffi::export]
+pub fn channel_profiles() -> Vec<ChannelProfile> {
+    core_channel::profiles()
+        .iter()
+        .map(|p| ChannelProfile {
+            channel: p.channel.into(),
+            id: p.id.into(),
+            revision: p.revision,
+            max_long_edge: p.max_long_edge,
+            quality: p.quality,
+            sampling: p.sampling.into(),
+            experimental: p.experimental,
+            last_observed: p.last_observed.into(),
+            last_verified: p.last_verified.map(Into::into),
+            observed_scope: p.observed_scope.into(),
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct PreparationReport {
+    pub channel: Channel,
+    pub profile_id: String,
+    pub profile_revision: u32,
+    pub original_width: u32,
+    pub original_height: u32,
+    pub output_width: u32,
+    pub output_height: u32,
+    pub headroom_areas: u32,
+    pub headroom_rounds: u8,
+}
+
+impl From<core_channel::PreparationReport> for PreparationReport {
+    fn from(r: core_channel::PreparationReport) -> Self {
+        Self {
+            channel: r.channel.into(),
+            profile_id: r.profile_id.into(),
+            profile_revision: r.profile_revision,
+            original_width: r.original_width,
+            original_height: r.original_height,
+            output_width: r.output_width,
+            output_height: r.output_height,
+            headroom_areas: r.headroom_areas,
+            headroom_rounds: r.headroom_rounds,
+        }
+    }
+}
+
+/// A fresh cover with independent capacity/fit caches, and its preparation report.
+/// Call hide in Jpeg mode on this cover, without preparing the stego image again.
+#[derive(Clone, uniffi::Record)]
+pub struct PreparedCover {
+    pub cover: Arc<Cover>,
+    pub report: PreparationReport,
 }
 
 /// How to hide. Lossless takes a PNG or JPEG cover and always writes a PNG; Jpeg
@@ -345,6 +447,16 @@ impl Cover {
 
     pub fn format(&self) -> ImageFormat {
         self.format
+    }
+
+    /// Blocking: run off the UI thread. Leaves the source cover unchanged.
+    /// Returns a fresh JPEG cover to use for capacity, fit and native hiding.
+    pub fn prepare_for_channel(&self, channel: Channel) -> Result<PreparedCover> {
+        let prepared = core_channel::prepare(&self.bytes, channel.into_core())?;
+        Ok(PreparedCover {
+            cover: Self::new(prepared.jpeg)?,
+            report: prepared.report.into(),
+        })
     }
 
     pub fn capacity(&self, mode: ImageMode) -> Result<CoverCapacity> {

@@ -18,6 +18,10 @@ pub enum Error {
     )]
     PayloadTooLarge { needed: usize, available: usize },
 
+    /// Channel cover preparation could not reach its headroom criterion.
+    #[error("cover preparation failed: {0}")]
+    PreparationFailed(String),
+
     #[error("key not usable: {0}")]
     BadKey(String),
 
