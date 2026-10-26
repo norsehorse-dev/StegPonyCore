@@ -67,7 +67,8 @@ is gitignored; commit only the tooling and anonymized, reviewed measurements lat
 2. Send each photo to yourself, separately, as a **photo**, using four distinct
    test sessions: WhatsApp standard, WhatsApp HD, Signal photo, Telegram compressed
    photo. Record the setting actually shown by that version of the app, including
-   any global media-quality setting. If an option is unavailable, record that;
+   any global media-quality setting. `whatsapp-default` is for photos sent without
+   touching any quality option, which is what most people do. If an option is unavailable, record that;
    do not substitute a document/file send and call it a photo test.
 3. Use the filename stem as a caption or keep an ordered send log so renamed files
    can be paired correctly. Do not draw labels on, crop, or edit the photos.

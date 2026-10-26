@@ -23,7 +23,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageOps, __version__ as PILLOW_VERSION, features
 
-CHANNELS = ("whatsapp-standard", "whatsapp-hd", "signal-photo", "telegram-photo")
+CHANNELS = ("whatsapp-standard", "whatsapp-hd", "whatsapp-default", "signal-photo", "telegram-photo")
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 SCHEMA = 1
 REPO = Path(__file__).resolve().parents[2]
