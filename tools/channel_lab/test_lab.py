@@ -183,6 +183,23 @@ class ChannelLabTests(unittest.TestCase):
             self.prepare(out=other, sampling="444", match=returned)
         self.assertFalse(other.exists())
 
+    def test_headroom_removes_clipping(self):
+        bright = self.root / "bright.png"
+        image = Image.new("RGB", (48, 48), (250, 250, 250))
+        for x in range(48):
+            for y in range(24, 48):
+                image.putpixel((x, y), (255, 0, 0) if (x // 4) % 2 else (0, 0, 255))
+        image.save(bright)
+        manifest = self.prepare(photos=[str(bright)], sizes=[0], qualities=[72], headroom=True)
+        item = manifest["images"][0]
+        self.assertTrue(item["id"].endswith("_h"))
+        self.assertGreater(item["headroom_areas"], 0)
+        self.assertIsNotNone(manifest["settings"]["headroom"])
+        with Image.open(self.out / item["file"]) as im:
+            low, high = zip(*im.convert("RGB").getextrema())
+        self.assertGreater(min(low), 2)
+        self.assertLess(max(high), 253)
+
     def test_requantize_rounds_half_away_from_zero(self):
         self.assertEqual(lab.requantize(7, 2, 2), 7)
         self.assertEqual(lab.requantize(3, 2, 4), 2)

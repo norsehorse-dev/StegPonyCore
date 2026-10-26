@@ -37,6 +37,13 @@ measures how much the channel still changes when it is handed its own tables:
 python3 tools/channel_lab/lab.py prepare PHOTO1.jpg PHOTO2.jpg --sizes 1600 --match drafts/channel-lab/run-01/received/signal-photo/p001_m1600_q80_420.jpg --out drafts/channel-lab/run-02
 ```
 
+`--headroom` pulls any 16x16 area that clips (decoded pixels at 0 to 2 or 253 to
+255) toward its own mean, a little at a time, until a JPEG round trip no longer
+clips anywhere. Decoders disagree most at clipped pixels: in real Telegram returns
+every changed AC coefficient sat in a block with clipped pixels, and covers with
+headroom came back with no AC changes at all. Ids get an `_h` suffix and the
+manifest records how many areas were touched.
+
 Matched images are named with the table hash (`p001_m1600_ta66d0143_420`), and the
 manifest records the file the tables came from. The sampling must match the file's.
 

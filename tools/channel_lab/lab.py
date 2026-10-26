@@ -104,6 +104,38 @@ def describe(data):
         }
 
 
+def unclip(image, encode, low=2, high=253, rounds=12, factor=0.85):
+    """Pull 16x16 areas that clip after a JPEG round trip toward their mean until none do.
+
+    Messenger decoders disagree most where decoded pixels clip at 0 or 255 (color
+    conversion, chroma upsampling, IDCT rounding). In real Telegram returns every
+    changed AC coefficient sat in a block with clipped pixels. Returns the adjusted
+    image, how many 16x16 areas were touched and the number of rounds used.
+    """
+    im = image.convert("RGB").copy()
+    width, height = im.size
+    touched = set()
+    for round_no in range(rounds):
+        decoded = Image.open(io.BytesIO(encode(im))).convert("RGB")
+        px = decoded.load()
+        bad = {(x // 16, y // 16) for y in range(height) for x in range(width)
+               if min(px[x, y]) <= low or max(px[x, y]) >= high}
+        if not bad:
+            return im, len(touched), round_no
+        touched |= bad
+        src = im.load()
+        for bx, by in bad:
+            xs = range(bx * 16, min(bx * 16 + 16, width))
+            ys = range(by * 16, min(by * 16 + 16, height))
+            n = len(xs) * len(ys)
+            mean = [min(max(sum(src[x, y][c] for x in xs for y in ys) / n, 40), 215) for c in range(3)]
+            for y in ys:
+                for x in xs:
+                    p = src[x, y]
+                    src[x, y] = tuple(round(mean[c] + (p[c] - mean[c]) * factor) for c in range(3))
+    raise ValueError(f"Still clipping after {rounds} rounds")
+
+
 def write_json(path, value):
     with path.open("x", encoding="utf-8") as f:
         json.dump(value, f, indent=2, ensure_ascii=False, allow_nan=False)
@@ -203,7 +235,9 @@ def prepare(args):
                      "qualities": [] if matched else args.qualities, "matched_tables": matched,
                      "sampling": args.sampling, "resize": "LANCZOS, never upscale",
                      "orientation": "EXIF transposed before resize", "metadata": "stripped",
-                     "color": "decoded RGB, no ICC color transform"},
+                     "color": "decoded RGB, no ICC color transform",
+                     "headroom": "16x16 areas that clip after a round trip pulled toward their mean"
+                                 if getattr(args, "headroom", False) else None},
         "sources": [], "images": [],
     }
     for index, path in enumerate(photos, 1):
@@ -226,14 +260,25 @@ def prepare(args):
                 relative = f"send/{image_id}.jpg"
                 data = io.BytesIO()
                 options = {"qtables": qtables} if qtables else {"quality": quality}
-                resized.save(data, "JPEG", **options,
-                             subsampling=0 if args.sampling == "444" else 2,
-                             optimize=False, progressive=False)
+                options.update(subsampling=0 if args.sampling == "444" else 2,
+                               optimize=False, progressive=False)
+
+                def encode(img, options=options):
+                    buffer = io.BytesIO()
+                    img.save(buffer, "JPEG", **options)
+                    return buffer.getvalue()
+
+                prepared, areas = resized, None
+                if getattr(args, "headroom", False):
+                    prepared, areas, _ = unclip(resized, encode)
+                    image_id += "_h"
+                    relative = f"send/{image_id}.jpg"
+                prepared.save(data, "JPEG", **options)
                 encoded = data.getvalue()
                 (out / relative).write_bytes(encoded)
                 manifest["images"].append({"id": image_id, "source_id": source_id,
                     "file": relative, "requested_long_edge": edge or "original",
-                    "requested_quality": quality, **describe(encoded)})
+                    "requested_quality": quality, "headroom_areas": areas, **describe(encoded)})
         print(f"prepared {source_id}: {path.name}")
     write_json(out / "manifest.json", manifest)
     sessions = {}
@@ -611,6 +656,8 @@ def main(argv=None):
     p.add_argument("--qualities", type=positive_list, default=positive_list("80,95"))
     p.add_argument("--sampling", choices=("420", "444"), default="420")
     p.add_argument("--match", type=Path, help="Encode with this returned JPEG's exact tables instead of --qualities")
+    p.add_argument("--headroom", action="store_true",
+                   help="Pull areas that clip after a JPEG round trip back from 0 and 255 (ids end in _h)")
     p.add_argument("--recursive", action="store_true")
     p.add_argument("--limit", type=int, help="Take the first N photos in sorted path order")
     p.add_argument("--dry-run", action="store_true")
