@@ -32,6 +32,34 @@ from the gallery, downloaded on the Mac (`drafts/channel-lab/run-2026-10-26-tele
 That looks like a fixed filter (sharpening-like) plus a q87 re-encode, not random noise. If it is
 deterministic, the writer can simulate it locally (section 5, D).
 
+## 2a. Where the errors fall (experiment 2, Oct 26, 2026)
+
+Per-value and per-frequency tables for all three channels, from the existing returns, are in
+`drafts/channel-lab/error-tables-2026-10-26/` (not committed). The pattern that matters:
+
+- **WhatsApp** only ever changes coefficients of magnitude 1, and only towards 0 (1.3% of luma,
+  3.3% of chroma ones, mostly high frequencies). Zeros and magnitudes of 2 or more never changed.
+- **Signal** changes low frequencies (zigzag 1 to 5: 11% of luma AC) and larger values most;
+  zigzag 15 and up is almost untouched (0.02% or less).
+- **Telegram from Android** never turns a zero into anything else and never turns a magnitude of 2
+  or more into 0. Ones mostly grow to 2.
+
+So the **zero / not-zero pattern** survives all three. Reading a coefficient as 0 (one symbol), a
+magnitude of 2 or more (the other symbol) or a magnitude of 1 (an erasure, "unknown"), luma
+zigzag 10 to 27 measured:
+
+| Route | Wrong symbol | Erasure |
+|---|---|---|
+| WhatsApp | 0 | 0 |
+| Signal | 0.0002% | 0.03% |
+| Telegram from Android | 0 | 0.94% |
+
+Zigzag 15 to 27 is even cleaner for Signal (0.0001%, 0.004%). Erasures are cheap for an
+erasure-correcting code. Caveats: these were the channel's effect on existing values; values the
+writer creates (0 to 2 and back) must be measured the same way, and moving a coefficient by 2 is a
+larger change than native mode makes, so detectability needs its own measurement (R2 already says
+High until then).
+
 ## 3. Requirements
 
 Kept from the format: no header or marker, two slots always (payload plus decoy or filler), the same
@@ -67,7 +95,7 @@ literature takes (adaptive dither modulation, transport channel matching with er
 Cost: larger changes per coefficient, so higher detectability than native mode, and far less
 capacity.
 
-**C. Avoid the unstable values.** The Android data says zeros and magnitudes of 3 or more mostly
+**C. Avoid the unstable values (now the leading candidate, section 2a).** The Android data says zeros and magnitudes of 3 or more mostly
 survive, while 1 and 2 do not. A symbol rule that keeps embedded values away from 1 and 2 (for
 example, only moving coefficients already at 3 or more, and in steps that stay there) could get
 the error rate down far enough for modest ECC. It needs selection that survives the channel, which
@@ -80,7 +108,9 @@ positions that survive. Cheap to test first: send the same photo twice and send 
 ## 6. Recommendation
 
 One new robust carrier (B, refined by C) with ECC parameters per channel profile, found by trial on
-reveal like buckets. Build and verify it against WhatsApp first (lowest error rate, settles the
+reveal like buckets. Section 2a points at the concrete form: fixed mid-frequency luma positions
+(around zigzag 10 to 27), one bit each as zero versus a magnitude of 2 or more, magnitude 1 read as
+an erasure, under an erasure-correcting code with interleaving. Build and verify it against WhatsApp first (lowest error rate, settles the
 format), then Signal, then Telegram from Android. Run the D experiments before any code, because
 they decide how much margin the code needs.
 
@@ -102,7 +132,10 @@ they decide how much margin the code needs.
 1. Android Telegram idempotence: send one return again; send one cover twice. Byte-identical or
    shrinking changes mean a model is possible.
 2. Per-frequency and per-value error tables for WhatsApp and Signal from the existing returns.
+   Done Oct 26, 2026 (section 2a).
 3. A WhatsApp repeat on a later app version.
+4. A round trip of writer-made symbols: covers with chosen positions set to 0 or plus or minus 2,
+   through each channel, to measure errors and erasures on values the writer creates.
 
 ## 9. Estimate
 
