@@ -57,5 +57,5 @@ pub(super) const PROFILES: [ChannelProfile; 1] = [ChannelProfile {
     experimental: true,
     last_observed: "2026-10-26",
     last_verified: None,
-    observed_scope: "Telegram compressed photo, default settings, iPhone to Mac; Pillow/libjpeg lab preparation. Rust preparation and Android paths need delivery tests.",
+    observed_scope: "Telegram compressed photo sent from an iPhone, picked from Telegram's photo gallery, standard quality, downloaded on a Mac. Pillow lab covers and one Rust-prepared cover from StegPony Android came back with every AC coefficient intact. Not valid for Android senders (re-encoded at IJG q87 with added noise) or for images attached as files (re-encoded at IJG q87).",
 }];

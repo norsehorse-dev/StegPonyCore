@@ -66,11 +66,23 @@ Only flagged areas are changed; counts are reported for later visual/timing revi
 
 ## Evidence and limits
 
-The profile is experimental. `last_observed` is 2026-10-26, scoped to the existing
-Pillow/libjpeg lab's iPhone-to-Mac default compressed-photo tests. `last_verified`
-is absent. Those results do not verify this new Rust pipeline: it uses a different
-resizer, DCT/color implementation and clipping checks. New delivery testing is
-required, particularly on Android and after app updates.
+The profile is experimental. `last_observed` is 2026-10-26. `last_verified` is absent.
+Its scope is a Telegram compressed photo **sent from an iPhone, picked from Telegram's
+photo gallery**, in standard quality, downloaded on a Mac. On that path the Pillow lab
+covers and one Rust-prepared cover made by StegPony Android came back with every AC
+coefficient intact.
+
+Two paths do not work and no preparation can fix them:
+
+- **Attach > File** (and likely sharing into Telegram from another app): the image is
+  re-encoded at IJG q87 with an sRGB ICC profile, so every coefficient is rescaled.
+- **Android as the sender**: Android Telegram re-encodes even gallery photos at IJG q87.
+  Covers pre-matched to those tables still lost 8 to 10% of luma AC coefficients to
+  evenly signed plus or minus 1 errors (a pixel round trip with added noise).
+
+Android senders, like WhatsApp and Signal, need an error-tolerant mode. More scenes,
+larger payloads and a repeat after an app update are still required before
+`last_verified` is set.
 
 A successful preparation means the local cover passed its clipping checks. It does
 not mean it will survive Telegram, that a stego image cannot introduce clipping,
