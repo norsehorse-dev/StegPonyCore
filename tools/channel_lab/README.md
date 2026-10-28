@@ -185,3 +185,29 @@ returns outside their channel folder, IJG table naming against Pillow, the file
 control and the summary. With `jpeg_tool` built they also check the coefficient
 comparison on a pass-through and a recompressed return; without it that test is
 skipped. They do not contact or simulate any particular messenger service.
+
+## Symbol round trips (error-tolerant mode)
+
+`symbols.py` measures how a channel treats symbols the writer creates, for
+`docs/ERROR_TOLERANT_MODE.md` (experiment 4). From covers already prepared for a channel
+(a run's `send/` files), `make` sets a keyed 5% sample of luma AC coefficients in zigzag
+band 10 to 27 (only those whose value is 0, 1 or 2) to a random symbol: 0, or a magnitude
+of 2. The positions, symbols and values before and after go into `symbols/*.npz`; the seed
+and file hashes into `manifest.json`. Needs numpy and jpeglib.
+
+```
+python3 tools/channel_lab/symbols.py make drafts/channel-lab/RUN/send/*.jpg --out drafts/channel-lab/RUN-symbols
+python3 tools/channel_lab/symbols.py compare drafts/channel-lab/RUN-symbols --label telegram-android
+```
+
+Send the `send/` files the same way as the run they came from, put the returns under
+`received/`, and fill in `symbols.csv` (id, received path). `compare` reads each return as
+0, 2 or more, or 1 (an erasure) at the chosen positions and counts wrong symbols and
+erasures, split by symbol, by zigzag index, and by whether the tool wrote the value or it
+was already there. Unselected band positions are counted as a control. Reports go to
+`reports/symbols-LABEL.json` and are never overwritten. No payload, keys or error
+correction are involved.
+
+```
+python3 -m unittest tools/channel_lab/test_symbols.py
+```

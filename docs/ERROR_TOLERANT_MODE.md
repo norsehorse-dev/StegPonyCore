@@ -131,11 +131,25 @@ they decide how much margin the code needs.
 
 1. Android Telegram idempotence: send one return again; send one cover twice. Byte-identical or
    shrinking changes mean a model is possible.
+   Done Oct 26, 2026: the same cover sent again came back **byte-identical** (two covers), so Android
+   Telegram is deterministic for a given file. A return sent through again changed 0.23% of luma AC
+   more, mostly values of 1 and 2: close to a fixed point after one pass. A local model fitted to
+   returns is realistic, which makes "verify before send" (planning 7.3, step 5) possible for
+   Telegram from Android.
 2. Per-frequency and per-value error tables for WhatsApp and Signal from the existing returns.
    Done Oct 26, 2026 (section 2a).
 3. A WhatsApp repeat on a later app version.
 4. A round trip of writer-made symbols: covers with chosen positions set to 0 or plus or minus 2,
    through each channel, to measure errors and erasures on values the writer creates.
+   Tool: `tools/channel_lab/symbols.py`. Test covers made Oct 27, 2026 from the matched covers of
+   each channel (Telegram from Android q87, WhatsApp 1600, Signal 1600), about 16,000 to 27,000
+   symbols per photo.
+   **Telegram from Android, Oct 28, 2026:** 49,625 symbols over three photos, **0 wrong**. Every
+   written 0 came back as 0. Erasures 11% overall, all on written magnitudes of 2 that came back
+   as 1, and concentrated on particular frequencies: zigzag 10, 12, 16, 18, 19, 23 and 24 lost
+   20 to 47% of their 2s, the others 0 to 2%. Keeping only zigzag 11, 13, 14, 15, 17, 20, 21, 22,
+   25, 26 and 27: 30,606 symbols, 0.76% erased, 0 wrong. So the band is chosen per profile from
+   measurements, not fixed. WhatsApp and Signal sends pending.
 
 ## 9. Estimate
 
