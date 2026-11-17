@@ -32,12 +32,12 @@ App bindings:
   cargo run -p stegpony-ffi --features cli --bin uniffi-bindgen -- generate --library target/debug/libstegpony_ffi.so --language kotlin --out-dir bindings
   ```
 
-Phase E now includes [experimental Telegram cover preparation](docs/CHANNEL_PREPARATION.md):
+The core also has [experimental Telegram cover preparation](docs/CHANNEL_PREPARATION.md):
 resize to at most 1280, exact IJG q72/4:2:0 encoding, and bounded headroom adjustment
 before ordinary native hiding. Core `channel::prepare` and the UniFFI
-`Cover::prepare_for_channel` return the prepared cover and a report. Rust-prepared
-output still needs real Telegram delivery tests; WhatsApp and Signal need a
-separate error-tolerant carrier.
+`Cover::prepare_for_channel` return the prepared cover and a report. It is not part
+of 1.0: surviving a messenger's photo mode moved to Later (docs/PLANNING_1_0_0.md,
+section 0), and the Android app sends images as unchanged files.
 
 ## Command line
 

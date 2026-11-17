@@ -52,6 +52,12 @@ When the repos are created, this file becomes `PLANNING_1_0_0.md` at each repo r
 - Oct 26, 2026: **First Rust-prepared cover through real Telegram: the entry path decides.** A cover prepared and hidden in by StegPony Android, moved to the iPhone, saved to Photos and sent from Telegram's photo gallery came back on the Mac at IJG q72 with no ICC profile and every AC coefficient identical (6 Cr DC values moved by 1). The same file attached with Attach > File came back re-encoded at IJG q87, progressive, with a 456-byte sRGB profile (copyright "Google Inc. 2016"): every coefficient rescaled, nothing revealed. The app's Telegram instructions now say: save, then send from the gallery in standard quality.
 - Oct 26, 2026: **Telegram from Android is not a preparation problem.** Android Telegram re-encodes even a photo picked from its gallery, at IJG q87 with the same sRGB profile. A batch pre-matched to those exact tables, with headroom, still came back with 7.7 to 9.7% of luma AC changed (51 to 60% of nonzero luma AC), almost all by plus or minus 1 and evenly signed, with no shift or colour change and more high-frequency energy: a pixel round trip that adds small noise. Pre-matching cannot fix that. The `telegram-photo-v1` scope is narrowed to iPhone senders using the gallery; the Android app labels the option "Telegram photo from an iPhone (experimental)". Telegram from Android joins WhatsApp and Signal as needing an error-tolerant mode (`docs/ERROR_TOLERANT_MODE.md`, draft).
 - Oct 26, 2026: **Error-tolerant mode decisions** (`docs/ERROR_TOLERANT_MODE.md`). A robust JPEG carrier joins format v1 before 1.0; it is rated High until steganalysis is run on it; 1.0 covers WhatsApp, Signal and Telegram from Android, built in that order, and waits until all three deliver real two-slot messages; two slots always; files allowed when they fit. Next: the channel experiments in section 8 of that document, then the carrier.
+- Nov 16, 2026: **1.0 trimmed: Survive-messenger moves to Later, with no version attached.** Phase E was planned too ambitiously for weekday evenings: every channel needs its own format work and its own real-send test pass, repeated whenever a platform changes its pipeline. 1.0 ships Lossless, native JPEG and the two text modes, and images are sent as unchanged files. This replaces the Oct 15 three-image-modes decision and the Oct 26 error-tolerant decisions (robust carrier in format v1 before 1.0, 1.0 waiting on WhatsApp, Signal and Telegram from Android). A robust carrier, if it is ever built, is a format addition after 1.0. The channel lab, `docs/CHANNEL_PREPARATION.md` and `docs/ERROR_TOLERANT_MODE.md` stay in the repo as notes.
+- Nov 16, 2026: **The experimental Telegram option comes out of the Android app for 1.0.** "Telegram photo from an iPhone (experimental)" leaves the Hide screen and Help, so no release depends on re-checking a messenger. `channel::prepare`, the `telegram-photo-v1` profile and `Cover::prepare_for_channel` stay in the core and the CLI.
+- Nov 16, 2026: **Zero-width text stays in 1.0 without per-app survival testing.** Help already calls it weak and says to send a test to yourself through the same app first. No survival table.
+- Nov 16, 2026: **Steganalysis stops at the current baseline.** The Oct 17 JPEG thresholds stand. The Aletheia runs, the PixelKnot and plain-LSB comparison and the numbers in Help are dropped from 1.0.
+- Nov 16, 2026: **Hardware keys: 1.0 names only the cards tested.** Nitrokey 3 (a tester's, NFC and USB) and Token2 PIN+ are listed as tested. Other OpenPGP cards with a Curve25519 encryption key should work and are not promised. No further card testing before 1.0.
+- Nov 16, 2026: **Localization stays in 1.0** with the full family set (section 17).
 
 ## 1. Summary
 
@@ -78,7 +84,7 @@ What StegPony does better: modern content-adaptive embedding (costs in the style
 
 **Privacy users who already use PGPony or AgePony.** The job is "encrypt, then hide the fact." They will hand an `.age` or `.asc` file to StegPony through the share sheet and want it back the same way.
 
-**People sharing through platforms that recompress.** WhatsApp, Signal (photo mode), Telegram, Instagram DMs. The job is "will this survive being sent?", and the honest answer depends on the channel. The Survive-messenger mode and the channel picker exist for them.
+**People sharing through platforms that recompress.** WhatsApp, Signal (photo mode), Telegram, Instagram DMs. The job is "will this survive being sent?", and the honest answer depends on the channel. 1.0 does not serve this job: it tells them to send the image as a file, and says why (Nov 16, 2026; Survive-messenger is in Later).
 
 **Hobbyists, CTF players, and the curious.** Text modes, the capacity meter, and a clear explanation of what is and is not detectable. They file issues and talk about the app.
 
@@ -89,7 +95,6 @@ Goals for 1.0:
 - Hide text or a file in a PNG or JPEG cover and recover it bit-exact.
 - No detectable format marker. Extraction with a wrong secret yields nothing, and the app cannot tell a wrong secret from an image with no payload.
 - Passphrase and public-key modes; decoy payload.
-- Survive-messenger mode with per-channel profiles and a "last verified" date per profile.
 - Dictionary and zero-width text modes.
 - Honest UI: capacity, detectability, and survival stated per mode, never overclaimed.
 - Offline, no INTERNET permission, no analytics.
@@ -102,16 +107,16 @@ Non-goals for 1.0:
 - Kryptos, PixelKnot, or steghide format compatibility.
 - Multi-recipient public-key slots (Q5).
 - Natural-language text generation with a language model (later, if ever; section 8).
-- Guaranteed survival on any recompressing platform.
+- Survive-messenger mode, channel profiles, or survival through any messenger's photo mode (moved to Later, Nov 16, 2026).
 
 ## 5. Product shape
 
 Four destinations:
 
-- **Hide.** Pick a cover (camera, photo picker, file) or a text cover, pick a payload (type a message, or pick a file), pick a key (passphrase or a contact's public key), optionally add a decoy, pick "How will you send this?" (Original file / Messenger: WhatsApp, Signal, Telegram... / Text). The capacity meter updates live. Output goes to Save, Share, or Copy.
+- **Hide.** Pick a cover (camera, photo picker, file) or a text cover, pick a payload (type a message, or pick a file), pick a key (passphrase or a contact's public key), optionally add a decoy, pick image or text output. Images are sent as unchanged files; the screen says a messenger's photo mode destroys what's hidden. The capacity meter updates live. Output goes to Save, Share, or Copy.
 - **Reveal.** Open an image or paste text, enter a passphrase or let the app try your identities. Shows the message or offers the file for save/share/open-with. Share-target entry point: share an image into StegPony and it lands here.
 - **Keys.** Your identity (X25519, age-compatible), contacts' public keys (scan QR, paste `age1...`, import from AgePony via share, import a Curve25519 PGP public key by file or from PGPony via share). Your identity can also be a Curve25519 PGP secret key, imported and unlocked with its passphrase. Export your recipient as text or QR.
-- **Settings.** Launcher disguise, app lock, clipboard auto-clear, default output format, channel profiles with "last verified" dates, Help (what is detectable and what is not), More from NorseHorse, licenses.
+- **Settings.** Launcher disguise, app lock, clipboard auto-clear, default output format, Help (what is detectable and what is not), More from NorseHorse, licenses.
 
 ## 6. Crypto envelope
 
@@ -143,7 +148,7 @@ One envelope format for every carrier (image or text). Design rule: every byte t
 - Every StegPony carrier has two slots. The carrier's positions are split into two halves by a public, keyless rule (alternate 8x8 blocks for images, alternate positions for text). Each slot is placed within its half by its own locate key.
 - With no decoy, the second slot is filled with random bytes of the same bucket size. An unused slot and a used slot look identical, so the existence of a second payload is deniable.
 - On Reveal, the app tries the secret against both halves, so a user never needs to know which slot is which, and an observer cannot tell from the UI either.
-- Costs: capacity per payload is half the carrier; filling both slots raises the change rate, which raises detectability. The capacity meter accounts for both slots. In Survive-messenger mode capacity may be too small for two meaningful slots, and the UI says so rather than silently dropping the decoy.
+- Costs: capacity per payload is half the carrier; filling both slots raises the change rate, which raises detectability. The capacity meter accounts for both slots.
 - Help is honest about the limit: a decoy protects against someone who forces a passphrase out of you and accepts what it shows; it does not defeat someone who already knows StegPony always has two slots and keeps pushing. That is the same deniability argument VeraCrypt hidden volumes make, and it is stated the same way.
 
 ### 6.5 What we do not claim
@@ -168,7 +173,9 @@ One envelope format for every carrier (image or text). Design rule: every byte t
 - Survives delivery as an unchanged file. Does not survive re-quantization, resizing, or messenger "photo" sends.
 - Metadata: EXIF stripped by default (ScrubPony's logic), since a messenger-sent image usually has none. Option to keep. HEIC covers are decoded and re-encoded as JPEG, which loses the native-coefficient advantage, and the UI says so.
 
-### 7.3 Survive-messenger (experimental)
+### 7.3 Survive-messenger (Later, not in 1.0)
+
+Moved out of 1.0 on Nov 16, 2026 (section 0). What follows is the original approach, kept for whoever picks it up. What the channel lab found is in section 0 (Oct 26 entries) and in `docs/CHANNEL_PREPARATION.md` and `docs/ERROR_TOLERANT_MODE.md`.
 
 The hard one, and the user asked for it. Honest framing goes in the UI: small capacity, higher detectability, survival verified per channel and per date, may break when a platform changes its pipeline.
 
@@ -180,7 +187,7 @@ Approach:
 4. **Error correction.** Reed-Solomon or BCH with interleaving across blocks, sized per profile from measured bit-error rates.
 5. **Verify before send.** The app simulates the channel locally (resize plus recompress with the profile's tables), extracts from the simulated result, and refuses to report success unless the round trip works.
 
-Candidate channels for 1.0, each confirmed by actually sending test images through it in the Phase E channel lab: WhatsApp (standard and HD), Signal (photo mode), Telegram (compressed photo), Discord, Instagram DM. Expected capacity is in the hundreds of bytes, not kilobytes; Phase E measures it.
+Candidate channels, each confirmed by actually sending test images through it in the Phase E channel lab: WhatsApp (standard and HD), Signal (photo mode), Telegram (compressed photo), Discord, Instagram DM. Expected capacity is in the hundreds of bytes, not kilobytes; Phase E measures it.
 
 ### 7.4 Capacity and detectability UI
 
@@ -212,7 +219,7 @@ Both modes run the same envelope (section 6) first, so the hidden content is alw
 - Encodes bits as invisible Unicode characters (zero-width space, non-joiner, joiner, word joiner) interleaved into a cover message the user writes. The visible text is exactly what the user typed.
 - Honest label, in the UI as "weak": many platforms strip or normalize these characters, and any tool that looks for them finds them instantly. Good for a note in a document or a file, poor against anyone checking.
 - Placed only at the start of the text or right after whitespace, so emoji joiners are never read as data (FORMAT.md 7.2).
-- Per-platform survival recorded in Help after Phase D testing (whether WhatsApp, Signal, Telegram, SMS, email, and common note apps keep them).
+- No per-app survival table (Nov 16, 2026). Help says to send a test to yourself through the same app before relying on it.
 
 ### 8.3 Later, maybe
 
@@ -222,14 +229,13 @@ Natural-looking text from an on-device language model with arithmetic coding. It
 
 1.0:
 
-- Hide and Reveal for PNG, JPEG, Survive-messenger (experimental), dictionary text, zero-width text.
+- Hide and Reveal for PNG, JPEG, dictionary text, zero-width text.
 - Payloads: text and any file.
 - Passphrase and public-key (age X25519) modes; optional passphrase on top of public key.
 - Decoy slot.
 - Keys: generate identity, import age identity, contacts by QR or paste, export recipient.
 - PGP keys: import Curve25519 public and secret keys (v4 cv25519, v6 X25519) by file or from PGPony via share, for hiding to contacts and revealing with your own key.
-- Reveal with a hardware key (OpenPGP card applet on YubiKey, Nitrokey, Token2) holding a Curve25519 encryption key, over NFC or USB (RC1).
-- Channel picker on Hide; channel profiles with last-verified dates.
+- Reveal with a hardware key (OpenPGP card applet) holding a Curve25519 encryption key, over NFC or USB. Tested and named: Nitrokey 3 and Token2 PIN+. Other cards should work and are not promised.
 - Capacity meter and detectability rating.
 - Cover reuse warning, EXIF strip, in-app camera capture.
 - Share target (images and text), open-with for images, share-out.
@@ -238,6 +244,10 @@ Natural-looking text from an on-device language model with arithmetic coding. It
 
 Later:
 
+- Survive-messenger: images that survive a messenger's photo mode (section 7.3). No version attached. Telegram cover preparation already exists in the core; WhatsApp, Signal and Telegram from Android need the error-tolerant carrier.
+- Zero-width survival table per app.
+- Steganalysis comparison against PixelKnot (F5) and plain LSB, with the numbers in Help.
+- Hardware-key testing on YubiKey and other cards.
 - iOS app (section 19).
 - Desktop app and a CLI from the same core.
 - Multi-recipient public-key slots.
@@ -292,15 +302,15 @@ The help text is written for people whose safety may depend on it: plain, specif
 
 ## 13. Architecture and stack
 
-- **stegpony-core (Rust).** Envelope (Argon2id, X25519, Elligator 2, HKDF, ChaCha20-Poly1305 from RustCrypto and dalek crates), keyed permutation, slot layout, cost functions, syndrome-trellis coder, PNG I/O (`png` crate), JPEG coefficient I/O (Q6), robust-mode pipeline and channel profiles, ECC, dictionary and zero-width codecs, age key parsing, OpenPGP Curve25519 key import (rpgp), and reveal through an external key exchange (a callback that a hardware key answers). No platform code. Fully built and tested in the cloud session.
-- **CLI.** `stegpony` binary in the core repo: hide, reveal, capacity, simulate-channel. Used for fixtures, steganalysis runs, and as the eventual desktop CLI.
+- **stegpony-core (Rust).** Envelope (Argon2id, X25519, Elligator 2, HKDF, ChaCha20-Poly1305 from RustCrypto and dalek crates), keyed permutation, slot layout, cost functions, syndrome-trellis coder, PNG I/O (`png` crate), JPEG coefficient I/O (Q6), Telegram cover preparation (experimental, not used by the 1.0 app), dictionary and zero-width codecs, age key parsing, OpenPGP Curve25519 key import (rpgp), and reveal through an external key exchange (a callback that a hardware key answers). No platform code. Fully built and tested in the cloud session.
+- **CLI.** `stegpony` binary in the core repo: hide, reveal, capacity. Used for fixtures, steganalysis runs, and as the eventual desktop CLI.
 - **Android.** `:app` (Compose, Material 3) and the core through the binding in 10.3. Kotlin layer is source-only from Cowork; NorseHorse builds with gradlew on the Mac.
 - **Format contract.** `FORMAT.md` in the core repo: envelope, slot layout, permutation, bucket table, Argon2id parameters per version, dictionary list hashes. Test vectors (`envelope_vectors.json`, `png_vectors/`, `jpeg_vectors/`, `text_vectors.json`) are release-gating on every platform.
 - **Repos.** `~/Apps/StegPonyCore` (Rust, Apache-2.0 like PGPonyCore and PonyDirect, so the scheme can be audited on its own), `~/Apps/StegPonyAndroid`, later `~/Apps/StegPony` (iOS, no suffix). Repo-local git identity `norsehorse-dev`, no AI attribution, standard gitignores, stage by path.
 
 ## 14. Phase plan, RCs, and estimate
 
-Part-time weekday evenings. Survive-messenger is research-grade, so its estimate is the loosest.
+Part-time weekday evenings. Trimmed Nov 16, 2026: Phase E is out of 1.0 (section 0).
 
 **Phase A: core envelope and Lossless.** Envelope, keyed permutation, two-slot layout, bucket padding, Argon2id tuning, X25519 and Elligator 2, PNG spatial embedding with costs and STC, the CLI, test vectors. 6 to 8 evenings. Clean Cowork handoff.
 
@@ -310,17 +320,19 @@ Part-time weekday evenings. Survive-messenger is research-grade, so its estimate
 
 **RC1 = A + B + C.** Images (Lossless and JPEG), both key modes with age and Curve25519 PGP keys, reveal with a hardware key, decoy, disguise. Goes to the requesting user first, then the Android RC pool. RC2 work does not start until RC1 is built and tested. (Oct 19, 2026: RC1 is a completion milestone, not a release; section 0.)
 
-**Phase D: text modes.** Dictionary codec and English list, zero-width codec, per-platform survival testing, text flows in the app. 4 to 5 evenings.
+**Phase D: text modes.** Dictionary codec and English list, zero-width codec, text flows in the app. 4 to 5 evenings.
 
 **RC2 = RC1 + D.**
 
 **Phase E: Survive-messenger.** Literature pass, channel lab (send calibration images through each platform, record what comes back), profiles, robust embedding, ECC sizing, simulate-and-verify before send, the experimental label and per-channel dates. 8 to 12 evenings.
 
-**RC3 = RC2 + E.**
+**RC3 = RC2 + E.** (Nov 16, 2026: Phase E stopped after the channel lab and Telegram cover preparation and moved to Later. The 1.0.0-rc3 that was built is rc2 plus the Nitrokey 3 card fixes.)
+
+**RC4 = RC3 with the Telegram option removed** from Hide and Help. Built and tested before Phase F starts.
 
 **Phase F: release.** String freeze, localization (section 17), F-Droid metadata and store graphics, stegpony.app on the Pony family shell (index, privacy, support, help, rc/), fdroiddata MR. 4 to 5 evenings.
 
-**1.0 = A through F**, roughly 42 to 56 evenings, about eleven to fourteen weeks of weekday evenings if StegPony got all of them; maintenance on the existing apps stretches that. Contingency only if the schedule breaks: E moves to 1.1 and 1.0 ships after RC2. Never cut the envelope's no-header property or the decoy's always-two-slots rule; a stego app with a tell is worse than none.
+**1.0 = A through D, RC4, and F.** What is left is RC4 and Phase F. Never cut the envelope's no-header property or the decoy's always-two-slots rule; a stego app with a tell is worse than none.
 
 ## 15. Distribution and release engineering
 
@@ -345,10 +357,9 @@ Family set at 1.0: en, de, es, fr, zh-Hans, pt-BR, ru. Plan it as multi-agent fr
 
 - **Core unit tests:** envelope vectors, wrong-key and no-payload images indistinguishable to the extractor, bucket trials, both slots independently recoverable, an unused slot statistically indistinguishable from a used one, Elligator 2 round trips, age key parsing against age's own test keys, PGP key import against keys made by PGPony and GnuPG (v4 and v6, locked and unlocked secret keys, refusal of RSA and NIST keys).
 - **Bit-exact cross-platform:** the CLI's output equals the Android app's output for the same inputs and seed, across devices.
-- **Steganalysis:** run Aletheia (open-source steganalysis toolkit) and a rich-model classifier against StegPony output at several payloads, on a cover set shot on the test phones. Compare with PixelKnot (F5) and plain LSB as baselines. The results set the rating thresholds in 7.4 and go into Help as plain numbers.
-- **Robustness:** for Survive-messenger, automated channel simulation in CI, and a manual channel-lab pass through every real platform before each RC, recorded with dates.
-- **Text:** zero-width survival per platform, dictionary round-trip through copy and paste, autocorrect, and line wrapping.
-- **Android:** no Bitmap ever reaches the core (a test asserts the core input is file bytes), share-out bytes equal core output, disguise switching on several launchers, FLAG_SECURE, hardware-key reveal on the requesting user's Nitrokey 3A NFC and on a Token2 PIN+ over USB (including whether each card accepts torsion-dirty ephemeral points), no INTERNET permission in the merged manifest.
+- **Steganalysis:** done for 1.0. The Oct 17 baseline (section 0) set the JPEG rating thresholds in 7.4. Aletheia runs, PixelKnot (F5) and plain-LSB baselines and numbers in Help are in Later.
+- **Text:** dictionary round-trip through copy and paste, autocorrect, and line wrapping.
+- **Android:** no Bitmap ever reaches the core (a test asserts the core input is file bytes), share-out bytes equal core output, disguise switching on several launchers, FLAG_SECURE, hardware-key reveal on a tester's Nitrokey 3A NFC and on a Token2 PIN+ over USB (including whether each card accepts torsion-dirty ephemeral points; no other cards before 1.0), no INTERNET permission in the merged manifest.
 - **Testers:** the requesting user gets RC1 first, then the Android RC pool. Same RC pattern as the rest of the family.
 
 ## 19. iOS and desktop
@@ -367,7 +378,7 @@ Each carries a recommendation that stands as a provisional decision unless overr
 5. **Multi-recipient.** Recommendation: not in 1.0. A fixed-size recipient table later, padded so the count does not leak.
 6. **JPEG coefficient I/O.** libjpeg-turbo FFI or pure-Rust entropy coder. Recommendation: libjpeg-turbo through FFI for 1.0 (proven, handles progressive and odd files), built in the Docker harness; revisit pure Rust later if the C dependency causes F-Droid friction. Decided Oct 16, 2026: pure Rust in stegpony-core, baseline first, then progressive decode and encode; libjpeg (via Python jpeglib) as the test oracle. Requirements come from sample camera JPEGs from the Android test phones (baseline or progressive, subsampling, restart intervals, table style, Ultra HDR gain maps). First sample, Oct 16, 2026 (moto g play 2026, four HDR shots): baseline SOF0, 3280x2460, 4:2:0, very high quality (luma quant table starts 2, 1, 1, 1), no restart markers, no gain map or trailing data, the full Annex K standard Huffman tables (all 162 AC symbols, so embedding never forces a table rebuild on this phone), EXIF plus a Motorola APP6 maker block (MMIMETA) that the default metadata strip removes. The other test phones still to be sampled. Codec status the same night: baseline, extended sequential and progressive decode and encode in stegpony-core, byte-identical round trip on all four samples and on libjpeg 6b/9e, libjpeg-turbo and mozjpeg output, checked by tools/check_jpeg.py.
 7. **Dictionary languages.** Recommendation: English list at 1.0; add the family languages one at a time with native review, since a bad word list is a tell.
-8. **Survive-messenger channels.** Recommendation: start with WhatsApp, Signal, Telegram; add Discord and Instagram DM only if the channel lab shows stable behavior.
+8. **Survive-messenger channels.** Recommendation: start with WhatsApp, Signal, Telegram; add Discord and Instagram DM only if the channel lab shows stable behavior. Closed Nov 16, 2026: not in 1.0 (section 0).
 9. **Disguise on a future Play flavor.** Recommendation: leave it out of any Play build; F-Droid and direct APK keep it.
 10. **Brand color.** Recommendation: ink indigo on charcoal.
 11. **App lock default.** Recommendation: off by default, offered during onboarding, with the decoy explained on the same screen.
