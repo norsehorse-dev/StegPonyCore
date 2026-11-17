@@ -58,6 +58,7 @@ When the repos are created, this file becomes `PLANNING_1_0_0.md` at each repo r
 - Nov 16, 2026: **Steganalysis stops at the current baseline.** The Oct 17 JPEG thresholds stand. The Aletheia runs, the PixelKnot and plain-LSB comparison and the numbers in Help are dropped from 1.0.
 - Nov 16, 2026: **Hardware keys: 1.0 names only the cards tested.** Nitrokey 3 (a tester's, NFC and USB) and Token2 PIN+ are listed as tested. Other OpenPGP cards with a Curve25519 encryption key should work and are not promised. No further card testing before 1.0.
 - Nov 16, 2026: **Localization stays in 1.0** with the full family set (section 17).
+- Nov 16, 2026: **Key access through PGPony becomes a second option for reveal, after 1.0.** The in-app card layer stays as it is. PGPony's OpenPGP provider API cannot do this today: it decrypts OpenPGP messages and never returns the raw X25519 shared secret the envelope needs. So PGPony Android gets a PGPony-only "key agreement" action first (key ID and both slots' points in one call, shared secrets out, behind its per-app allow-list, PIN and card prompts), and StegPony adds a `KeyAgreement` that calls it through the existing `RevealKey::External` hook. No core or format change. It covers hardware keys and software keys held in PGPony, so a secret key never has to be imported into StegPony. Costs to weigh when it is built: new provider surface on PGPony, a minimum PGPony version, and PGPony's allow-list recording that StegPony asked.
 
 ## 1. Summary
 
@@ -251,7 +252,7 @@ Later:
 - iOS app (section 19).
 - Desktop app and a CLI from the same core.
 - Multi-recipient public-key slots.
-- Live key access through PGPony (StegPony asks PGPony to unlock a key instead of importing it).
+- Key access through PGPony as an option on Reveal, for hardware and software keys, next to the in-app card layer (section 0, Nov 16, 2026). Needs a key-agreement action in PGPony Android first.
 - Post-quantum composite PGP keys.
 - More dictionary languages.
 - Batch hide (one payload split across several images with erasure coding, so any k of n recover it).
