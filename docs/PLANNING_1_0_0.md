@@ -59,6 +59,9 @@ When the repos are created, this file becomes `PLANNING_1_0_0.md` at each repo r
 - Nov 16, 2026: **Hardware keys: 1.0 names only the cards tested.** Nitrokey 3 (a tester's, NFC and USB) and Token2 PIN+ are listed as tested. Other OpenPGP cards with a Curve25519 encryption key should work and are not promised. No further card testing before 1.0.
 - Nov 16, 2026: **Localization stays in 1.0** with the full family set (section 17).
 - Nov 16, 2026: **Key access through PGPony becomes a second option for reveal, after 1.0.** The in-app card layer stays as it is. PGPony's OpenPGP provider API cannot do this today: it decrypts OpenPGP messages and never returns the raw X25519 shared secret the envelope needs. So PGPony Android gets a PGPony-only "key agreement" action first (key ID and both slots' points in one call, shared secrets out, behind its per-app allow-list, PIN and card prompts), and StegPony adds a `KeyAgreement` that calls it through the existing `RevealKey::External` hook. No core or format change. It covers hardware keys and software keys held in PGPony, so a secret key never has to be imported into StegPony. Costs to weigh when it is built: new provider surface on PGPony, a minimum PGPony version, and PGPony's allow-list recording that StegPony asked.
+- Nov 18, 2026: **1.0.0-rc4 published** (GitHub pre-release, signed tag v1.0.0-rc4): RC3 with the Telegram option removed.
+- Nov 18, 2026: **UI revamp before 1.0, as RC5.** The test builds kept the rough first-pass UI on purpose until the features worked. RC5 is the whole revamp in one RC, tested on phones here, and it lands before the string freeze because it changes strings. Decisions: a magenta accent on a plum-black ground (off-white in light mode) with every color role pinned, which closes Q10. Magenta because no other app in the family uses it and it stays clear of the green, amber and red of the ratings; the look follows PGPony Android (raised 12dp panels, a saturated accent with white text). The launcher icon is the family padlock and pony with a small picture in the shackle, on magenta, and the same mark sits in the app bar; Hide becomes a step-by-step flow (cover, what to hide, key and decoy, review and hide, result) in place of one long page of cards; choices move from chip pairs to option rows and radio rows, since translated labels will not fit chips; the cover, the result and the image being revealed are shown as small previews; the capacity meter marks the low, medium and high zones; every tab gets a top app bar and sub-pages are driven by it; switch rows toggle as a whole; no raw exception text reaches the screen.
+- Nov 18, 2026: **String freeze after RC5.** RC5 was built and tested on phones here, then reviewed independently against the UI checklist, and the review's string findings were fixed before freezing. The English strings in RC5 are the source for the seven-language pass in Phase F. Hardware-key help names only the Token2 PIN+ as tested; a Nitrokey 3 is added to that sentence if a tester confirms it before release.
 
 ## 1. Summary
 
@@ -333,7 +336,9 @@ Part-time weekday evenings. Trimmed Nov 16, 2026: Phase E is out of 1.0 (section
 
 **Phase F: release.** String freeze, localization (section 17), F-Droid metadata and store graphics, stegpony.app on the Pony family shell (index, privacy, support, help, rc/), fdroiddata MR. 4 to 5 evenings.
 
-**1.0 = A through D, RC4, and F.** What is left is RC4 and Phase F. Never cut the envelope's no-header property or the decoy's always-two-slots rule; a stego app with a tell is worse than none.
+**RC5 = RC4 + the UI revamp** (section 0, Nov 18, 2026). Built and tested before Phase F starts.
+
+**1.0 = A through D, RC4, RC5, and F.** What is left is RC5 and Phase F. Never cut the envelope's no-header property or the decoy's always-two-slots rule; a stego app with a tell is worse than none.
 
 ## 15. Distribution and release engineering
 
@@ -381,6 +386,6 @@ Each carries a recommendation that stands as a provisional decision unless overr
 7. **Dictionary languages.** Recommendation: English list at 1.0; add the family languages one at a time with native review, since a bad word list is a tell.
 8. **Survive-messenger channels.** Recommendation: start with WhatsApp, Signal, Telegram; add Discord and Instagram DM only if the channel lab shows stable behavior. Closed Nov 16, 2026: not in 1.0 (section 0).
 9. **Disguise on a future Play flavor.** Recommendation: leave it out of any Play build; F-Droid and direct APK keep it.
-10. **Brand color.** Recommendation: ink indigo on charcoal.
+10. **Brand color.** Recommendation: ink indigo on charcoal. Decided Nov 18, 2026: magenta on plum-black; indigo was dropped as too close to PGPony's second color.
 11. **App lock default.** Recommendation: off by default, offered during onboarding, with the decoy explained on the same screen.
 12. **Core license.** Recommendation: Apache-2.0 for StegPonyCore, matching PGPonyCore and PonyDirect, so the scheme can be audited and reused.
