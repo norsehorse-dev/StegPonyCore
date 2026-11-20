@@ -2725,7 +2725,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stegpony-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2737,7 +2737,7 @@ dependencies = [
 
 [[package]]
 name = "stegpony-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "age",
  "argon2 0.6.0",
@@ -2763,7 +2763,7 @@ dependencies = [
 
 [[package]]
 name = "stegpony-ffi"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "rand_core 0.6.4",
  "stegpony-core",

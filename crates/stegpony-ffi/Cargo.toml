@@ -17,7 +17,7 @@ crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
 rand_core = { version = "0.6", features = ["getrandom"] }
-stegpony-core = { version = "0.1.0", path = "../stegpony-core" }
+stegpony-core = { version = "1.0.0", path = "../stegpony-core" }
 thiserror = "2.0.21"
 uniffi = "0.32"
 zeroize = "1.9.1"
